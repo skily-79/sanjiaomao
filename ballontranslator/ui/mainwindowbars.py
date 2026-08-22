@@ -122,6 +122,9 @@ class LeftBar(Widget):
         actionOpenFolder.triggered.connect(self.onOpenFolder)
         actionOpenFolder.setShortcut(QKeySequence.Open)
 
+        actionOpenPdf = QAction(self.tr("Open PDF ... *.pdf"), self)
+        actionOpenPdf.triggered.connect(self.onOpenPdf)
+
         actionOpenProj = QAction(self.tr("Open Project ... *.json"), self)
         actionOpenProj.triggered.connect(self.onOpenProj)
 
@@ -147,13 +150,16 @@ class LeftBar(Widget):
         actionImportTranslationTxt = QAction(self.tr("Import translation from TXT/markdown"), self)
         self.import_trans_txt = actionImportTranslationTxt.triggered
 
+        actionExportPdf = QAction(self.tr("Export translated PDF"), self)
+        self.export_pdf = actionExportPdf.triggered
+
         self.openBtn = OpenBtn()
         self.openBtn.setFixedSize(LEFTBTN_WIDTH, LEFTBTN_WIDTH)
 
         openMenu = QMenu(self.openBtn)
         # Keep submenu ownership aligned with the visual popup chain for Wayland.
         self.recentMenu = QMenu(self.tr("Open Recent"), openMenu)
-        openMenu.addActions([actionOpenFolder, actionOpenProj])
+        openMenu.addActions([actionOpenFolder, actionOpenPdf, actionOpenProj])
         openMenu.addMenu(self.recentMenu)
         openMenu.addSeparator()
         openMenu.addActions([
@@ -165,6 +171,7 @@ class LeftBar(Widget):
             actionExportSrcMD,
             actionExportTranslationMD,
             actionImportTranslationTxt,
+            actionExportPdf,
         ])
         self.openBtn.setMenu(openMenu)
         self.openBtn.setPopupMode(QToolButton.InstantPopup)
@@ -272,6 +279,21 @@ class LeftBar(Widget):
         if osp.exists(folder_path):
             self.updateRecentProjList(folder_path)
             self.open_dir.emit(folder_path)
+
+    def onOpenPdf(self) -> None:
+        d = None
+        for projp in self.recent_proj_list:
+            projp = projp if osp.isdir(projp) else osp.dirname(projp)
+            if osp.exists(projp):
+                d = projp
+                break
+
+        dialog = QFileDialog()
+        pdf_path = str(dialog.getOpenFileName(self, self.tr('Open PDF'), d, filter="*.pdf *.PDF")[0])
+        if osp.exists(pdf_path):
+            # OpenProj() rasterises the PDF, so the recent list keeps the pdf path itself.
+            self.updateRecentProjList(pdf_path)
+            self.open_dir.emit(pdf_path)
 
     def onOpenProj(self):
         dialog = QFileDialog()
