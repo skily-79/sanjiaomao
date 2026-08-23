@@ -1,6 +1,8 @@
 import numpy as np
 import os.path as osp
 import traceback
+import threading
+from collections import deque
 
 from qtpy.QtCore import Qt, Signal, QUrl, QThread
 from qtpy.QtGui import QImage, QPixmap
@@ -43,38 +45,50 @@ class ImgSaveThread(ThreadBase):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.im_save_list = []
+        self.im_save_list = deque()
+        self._im_save_lock = threading.Lock()
+        # A producer can enqueue work during the tiny interval between the
+        # worker's final empty-queue check and QThread's finished signal.
+        self.finished.connect(self._restart_if_pending)
 
-    def saveImg(self, save_path: str, img: QImage, pagename_in_proj: str = '', save_params: dict = None, keep_alpha=False):
-        self.im_save_list.append((save_path, img, pagename_in_proj, save_params, keep_alpha))
-        if self.job is None:
-            self.job = self._save_img
+    def saveImg(self, save_path: str, img: QImage, pagename_in_proj: str = '', save_params: dict = None, keep_alpha=False) -> None:
+        with self._im_save_lock:
+            self.im_save_list.append((save_path, img, pagename_in_proj, save_params, keep_alpha))
+            should_start = self.job is None and not self.isRunning()
+            if should_start:
+                self.job = self._save_img
+        if should_start:
             self.start()
 
-    def _save_img(self):
+    def _restart_if_pending(self) -> None:
+        """Restart after a producer raced with the previous worker shutdown."""
+        with self._im_save_lock:
+            if not self.im_save_list or self.job is not None or self.isRunning():
+                return
+            self.job = self._save_img
+        self.start()
+
+    def _save_img(self) -> None:
         while True:
-            if len(self.im_save_list) == 0:
-                break
-            save_path, img, pagename_in_proj, save_params, keep_alpha = self.im_save_list[0]
+            with self._im_save_lock:
+                if not self.im_save_list:
+                    break
+                save_path, img, pagename_in_proj, save_params, keep_alpha = self.im_save_list.popleft()
             if save_params is None:
                 save_params = {}
-            if isinstance(img, QImage) or isinstance(img, QPixmap):
-                img = pixmap2ndarray(img, keep_alpha=keep_alpha)
-            imwrite(save_path, img, **save_params)
-            self.img_writed.emit(pagename_in_proj)
-            self.im_save_list.pop(0)
+            try:
+                if isinstance(img, QImage) or isinstance(img, QPixmap):
+                    img = pixmap2ndarray(img, keep_alpha=keep_alpha)
+                imwrite(save_path, img, **save_params)
+                self.img_writed.emit(pagename_in_proj)
+            except Exception as e:
+                # One bad page must not strand the remaining PDF/image writes.
+                create_error_dialog(e, self._thread_error_msg, self._thread_exception_type)
 
-    def on_exec_failed(self):
-        if len(self.im_save_list) > 0:
-            self.im_save_list.pop(0)
-            if len(self.im_save_list) == 0:
-                self.job = None
-            else:
-                try:
-                    self.job()
-                except Exception as e:
-                    self.on_exec_failed()
-                    create_error_dialog(e, self._thread_error_msg, self._thread_exception_type)
+    def on_exec_failed(self) -> None:
+        # Items are removed before conversion/write, so dropping another item
+        # here would lose a valid page after an unexpected worker exception.
+        return
 
 
 

@@ -71,6 +71,8 @@ class LLMTranslator(BaseTranslator):
 
     concate_text = False
     cht_require_convert = True
+    # LLM output may depend on page context and deliberate duplicate IDs.
+    dedupe_translation_sources = False
     params: Dict = {
         "description": "Translate using the selected text-capable LLM profile.",
         "max requests per minute": {

@@ -1089,11 +1089,16 @@ class ImgtransThread(QThread):
                 LOGGER.info('Image translation pipeline stopped by user')
                 break
                 
+            page_started_at = time.perf_counter()
+            stage_times = {}
+            stage_started_at = page_started_at
             img = self.imgtrans_proj.read_img(imgname)
+            stage_times['read'] = time.perf_counter() - stage_started_at
             mask = blk_list = None
             need_save_mask = False
             blk_removed: List[TextBlock] = []
             if cfg_module.enable_detect:
+                stage_started_at = time.perf_counter()
                 # Detection can replace or reorder blocks, so old translations
                 # are never compatible even if detection later fails.
                 self.imgtrans_proj.begin_detection(imgname)
@@ -1123,11 +1128,13 @@ class ImgtransThread(QThread):
                     
                 self.imgtrans_proj.update_page_progress(imgname, RunStatus.FIN_DET)
                 self.update_detect_progress.emit(self.detect_counter)
+                stage_times['detect'] = time.perf_counter() - stage_started_at
 
             if blk_list is None:
                 blk_list = self.imgtrans_proj.pages[imgname] if imgname in self.imgtrans_proj.pages else []
 
             if cfg_module.enable_ocr:
+                stage_started_at = time.perf_counter()
                 if hasattr(self.ocr, 'set_stop_event'):
                     self.ocr.set_stop_event(self.stop_event)
                 try:
@@ -1194,6 +1201,7 @@ class ImgtransThread(QThread):
                     break
                 self.imgtrans_proj.update_page_progress(imgname, RunStatus.FIN_OCR)
                 self.update_ocr_progress.emit(self.ocr_counter)
+                stage_times['ocr'] = time.perf_counter() - stage_started_at
 
             if need_save_mask and mask is not None:
                 self.imgtrans_proj.save_mask(imgname, mask)
@@ -1201,6 +1209,7 @@ class ImgtransThread(QThread):
 
             # Headless mode uses this same router; it has no translation-only branch.
             if cfg_module.enable_translate:
+                stage_started_at = time.perf_counter()
                 if self.parallel_trans:
                     if not self.translate_thread.push_pagekey_queue(imgname):
                         LOGGER.warning('Translation worker stopped before accepting page %s.', imgname)
@@ -1214,12 +1223,17 @@ class ImgtransThread(QThread):
                     )
                     self.translate_counter += 1
                     self.update_translate_progress.emit(self.translate_counter)
+                if not self.parallel_trans and not low_vram_trans:
+                    stage_times['translate'] = time.perf_counter() - stage_started_at
+                else:
+                    stage_times['translate'] = 'queued'
 
             if self.isStopRequested():
                 LOGGER.info('Image translation pipeline stopped.')
                 break
                         
             if cfg_module.enable_inpaint:
+                stage_started_at = time.perf_counter()
                 if hasattr(self.inpainter, 'set_stop_event'):
                     self.inpainter.set_stop_event(self.stop_event)
                 if mask is None:
@@ -1251,9 +1265,20 @@ class ImgtransThread(QThread):
                 self.inpaint_counter += 1
                 self.imgtrans_proj.update_page_progress(imgname, RunStatus.FIN_INPAINT)
                 self.update_inpaint_progress.emit(self.inpaint_counter)
+                stage_times['inpaint'] = time.perf_counter() - stage_started_at
             else:
                 if len(blk_removed) > 0:
                     self.imgtrans_proj.load_mask_by_imgname
+
+            LOGGER.debug(
+                'Pipeline page stages: page=%s total=%.3fs %s',
+                imgname,
+                time.perf_counter() - page_started_at,
+                ', '.join(
+                    f'{name}={value:.3f}s' if isinstance(value, float) else f'{name}={value}'
+                    for name, value in stage_times.items()
+                ),
+            )
         
         if cfg_module.enable_translate and low_vram_trans and not self.isStopRequested():
             unload_modules(self, ['textdetector', 'inpainter', 'ocr'])
@@ -1263,6 +1288,7 @@ class ImgtransThread(QThread):
                     LOGGER.info('Translation stopped by user')
                     break
                     
+                page_started_at = time.perf_counter()
                 blk_list = self.imgtrans_proj.pages[imgname]
                 self._translate_full_page(
                     self.imgtrans_proj,
@@ -1271,6 +1297,13 @@ class ImgtransThread(QThread):
                 )
                 self.translate_counter += 1
                 self.update_translate_progress.emit(self.translate_counter)
+                elapsed = time.perf_counter() - page_started_at
+                LOGGER.debug(
+                    'Pipeline page stages: page=%s total=%.3fs translate=%.3fs mode=low_vram',
+                    imgname,
+                    elapsed,
+                    elapsed,
+                )
 
         self._emit_pipeline_stopped_if_ready(imgtrans_running=False)
 

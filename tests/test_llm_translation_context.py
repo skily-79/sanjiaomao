@@ -1216,6 +1216,33 @@ class LLMTranslationContextTest(unittest.TestCase):
         )
         self.assertEqual(block.translation, 'translated')
 
+    def test_textblock_boundary_deduplicates_repeated_sources(self):
+        translator = SimpleNamespace(
+            lang_source='日本語',
+            lang_target='简体中文',
+            cht_require_convert=False,
+            concate_text=False,
+            dedupe_translation_sources=True,
+            translate=mock.Mock(return_value=['translated same', 'translated other']),
+        )
+        blocks = [_block('same'), _block('other'), _block('same')]
+
+        with mock.patch.object(pcfg, 'pre_mt_sublist', []), mock.patch.object(
+            pcfg, 'mt_sublist', []
+        ):
+            BaseTranslator.translate_textblk_lst(translator, blocks)
+
+        translator.translate.assert_called_once_with(
+            ['same', 'other'],
+            project=None,
+            page_key=None,
+            commit_history_window=False,
+        )
+        self.assertEqual(
+            [block.translation for block in blocks],
+            ['translated same', 'translated other', 'translated same'],
+        )
+
 
 if __name__ == '__main__':
     unittest.main()

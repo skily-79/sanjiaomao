@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import os
 import os.path as osp
+import time
 from typing import Callable, Dict, List, Optional, Tuple
 
 from .logger import logger as LOGGER
@@ -293,6 +294,7 @@ def export_translated_pdf(
     deflation pass. Page images are already encoded files, so this is the preferred
     path for the interactive export workflow.
     """
+    started_at = time.perf_counter()
     pymupdf = _load_pymupdf()
     manifest = read_pdf_manifest(directory)
     if not manifest or not manifest['pages']:
@@ -345,4 +347,12 @@ def export_translated_pdf(
     finally:
         out.close()
 
+    LOGGER.info(
+        'PDF export finished: pages=%d missing=%d elapsed=%.3fs fast=%s path=%s',
+        len(pages),
+        len(missing),
+        time.perf_counter() - started_at,
+        fast,
+        save_path,
+    )
     return save_path, missing

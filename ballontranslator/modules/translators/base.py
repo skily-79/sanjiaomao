@@ -142,6 +142,9 @@ class BaseTranslator(BaseModule):
 
     concate_text = True
     cht_require_convert = False
+    # Requests with repeated source strings can be reduced safely for ordinary
+    # translators. Context-sensitive translators can opt out.
+    dedupe_translation_sources = True
 
     def __init__(self,
                  lang_source: str, 
@@ -300,12 +303,36 @@ class BaseTranslator(BaseModule):
                         or id(block) in selected_blocks
                         for block in page
                     )
+            request_text_list = text_list
+            source_indexes = None
+            if getattr(self, 'dedupe_translation_sources', True) and not getattr(self, 'concate_text', True):
+                unique_texts = []
+                text_to_index = {}
+                candidate_indexes = []
+                for source_text in text_list:
+                    unique_index = text_to_index.get(source_text)
+                    if unique_index is None:
+                        unique_index = len(unique_texts)
+                        text_to_index[source_text] = unique_index
+                        unique_texts.append(source_text)
+                    candidate_indexes.append(unique_index)
+                if len(unique_texts) < len(text_list):
+                    request_text_list = unique_texts
+                    source_indexes = candidate_indexes
+                    LOGGER.debug(
+                        'Deduplicated translation sources: %d -> %d',
+                        len(text_list),
+                        len(unique_texts),
+                    )
+
             _translations = self.translate(
-                text_list,
+                request_text_list,
                 project=project,
                 page_key=page_key,
                 commit_history_window=commit_history_window,
             )
+            if source_indexes is not None:
+                _translations = [_translations[index] for index in source_indexes]
             for ii, idx in enumerate(non_empty_ids):
                 translations[idx] = _translations[ii]
 
