@@ -1,10 +1,11 @@
+from pathlib import Path
 import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest import mock
 
 from ballontranslator.utils import core_requirements
-from ballontranslator.utils.py_package_manager import MissingRequirement
+from ballontranslator.utils.py_package_manager import MissingRequirement, PyPackageManager
 from ballontranslator.utils.package_installer import InstallResult
 
 
@@ -34,6 +35,13 @@ class FakeProcess:
 
 
 class CoreRequirementsTests(unittest.TestCase):
+
+    def test_pdf_dependency_is_declared_and_mapped_to_import(self):
+        requirements_path = Path(__file__).resolve().parents[1] / 'requirements.txt'
+        requirements = core_requirements._applicable_requirements(requirements_path)
+        self.assertIn('pymupdf>=1.24.0', requirements)
+        manager = PyPackageManager()
+        self.assertEqual(manager.import_names_for_requirement('PyMuPDF>=1.24.0'), ['pymupdf'])
 
     def test_missing_win32gui_forces_pywin32_reinstall(self):
         with mock.patch.object(core_requirements.sys, 'platform', 'win32'), mock.patch(
