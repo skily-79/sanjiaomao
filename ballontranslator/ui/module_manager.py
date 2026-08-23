@@ -996,6 +996,7 @@ class ImgtransThread(QThread):
             to_inpaint = self.imgtrans_proj.inpainted_array
             im_h, im_w = tgt_img.shape[:2]
             progress_prod = 100. / len(blk_list) if len(blk_list) > 0 else 0
+            last_inpaint_progress = -1
             for ii, blk in enumerate(blk_list):
                 xyxy_ori = np.array(blk.xyxy, dtype=np.int64)
                 xyxy_ori[::2] = np.clip(xyxy_ori[::2], 0, im_w)
@@ -1006,7 +1007,9 @@ class ImgtransThread(QThread):
                     xyxy = enlarge_window(xyxy_ori.tolist(), im_w, im_h)
                     xyxy = np.array(xyxy, dtype=np.int64)
                     x1, y1, x2, y2 = xyxy.astype(np.int64)
-                    im = np.copy(to_inpaint[y1: y2, x1: x2])
+                    # Inpainter backends need a contiguous crop, but avoid an
+                    # unconditional copy when the source slice is already safe.
+                    im = np.ascontiguousarray(to_inpaint[y1: y2, x1: x2])
                     maskseg_method = get_maskseg_method()
                     inpaint_mask_array, ballon_mask, bub_dict = maskseg_method(im, mask=tgt_mask[y1: y2, x1: x2])
                     mask = self.post_process_mask(inpaint_mask_array)
@@ -1042,7 +1045,10 @@ class ImgtransThread(QThread):
                                 'inpaint_rect': [int(ox1), int(oy1), int(ox2), int(oy2)],
                                 'inpainted': inpainted[ry1: ry2, rx1: rx2]
                             }
-                    self.finish_blktrans_stage.emit('inpaint', int((ii+1) * progress_prod))
+                    progress = min(100, int((ii + 1) * progress_prod))
+                    if progress != last_inpaint_progress:
+                        self.finish_blktrans_stage.emit('inpaint', progress)
+                        last_inpaint_progress = progress
         self.finish_blktrans.emit(mode, blk_ids)
 
     def _imgtrans_pipeline(self):
