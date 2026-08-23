@@ -282,12 +282,16 @@ def export_translated_pdf(
     result_dir: Optional[str] = None,
     save_path: Optional[str] = None,
     progress_cb: Optional[Callable[[int, int], None]] = None,
+    fast: bool = True,
 ) -> Tuple[str, List[str]]:
     """Rebuild a PDF from the translated page images of a PDF-backed project.
 
     Returns ``(save_path, missing_pages)``. Page sizes come from the manifest so the
     output keeps the original PDF page geometry; pages whose result image is missing
     fall back to the untranslated source render and are reported in ``missing_pages``.
+    ``fast`` skips the expensive whole-document garbage collection and stream
+    deflation pass. Page images are already encoded files, so this is the preferred
+    path for the interactive export workflow.
     """
     pymupdf = _load_pymupdf()
     manifest = read_pdf_manifest(directory)
@@ -333,7 +337,11 @@ def export_translated_pdf(
         if out.page_count == 0:
             raise PdfSupportError('No page images available to export')
         os.makedirs(osp.dirname(osp.abspath(save_path)), exist_ok=True)
-        out.save(save_path, deflate=True, garbage=3)
+        out.save(
+            save_path,
+            deflate=not fast,
+            garbage=0 if fast else 3,
+        )
     finally:
         out.close()
 
