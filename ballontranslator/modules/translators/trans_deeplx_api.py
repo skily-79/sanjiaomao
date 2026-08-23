@@ -17,6 +17,7 @@ class DeepLTranslatorv2(BaseTranslator):
 # Setup your endpoint api with https://github.com/OwO-Network/DeepLX
 
     def _setup_translator(self):
+        self.session = requests.Session()
         self.lang_map['简体中文'] = 'zh'
         self.lang_map['日本語'] = 'ja'
         self.lang_map['English'] = 'en'
@@ -46,7 +47,7 @@ class DeepLTranslatorv2(BaseTranslator):
                 'target_lang': self.lang_map[self.lang_target]
             }
 
-            response = requests.post(self.get_param_value('api_url'), json=data)
+            response = self.session.post(self.get_param_value('api_url'), json=data)
 
             if response.status_code == 200:
                 # Extract the translated text from the 'data' key

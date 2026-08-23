@@ -198,6 +198,7 @@ class DeleteBlkItemsCommand(QUndoCommand):
 
         if self.mode == 1:
             self.canvas.saved_drawundo_step -= 1
+            self.canvas.imgtrans_proj.ensure_inpainted_array_writable()
             img_array = self.canvas.imgtrans_proj.inpainted_array
             mask_array = self.canvas.imgtrans_proj.mask_array
             for mskpnt, inpaint_rect, redo_img in zip(self.mask_pnts, self.inpaint_rect_lst, self.redo_img_list):
@@ -234,6 +235,7 @@ class DeleteBlkItemsCommand(QUndoCommand):
 
         if self.mode == 1:
             self.canvas.saved_drawundo_step += 1
+            self.canvas.imgtrans_proj.ensure_inpainted_array_writable()
             img_array = self.canvas.imgtrans_proj.inpainted_array
             mask_array = self.canvas.imgtrans_proj.mask_array
             for mskpnt, inpaint_rect, undo_img in zip(self.mask_pnts, self.inpaint_rect_lst, self.undo_img_list):

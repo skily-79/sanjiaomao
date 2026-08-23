@@ -182,6 +182,8 @@ class MainWindow(mainwindow_cls):
         self.import_doc_thread.fin_io.connect(self.on_fin_import_doc)
         self.export_pdf_thread = ExportPdfThread()
         self.export_pdf_thread.fin_export.connect(self.on_fin_export_pdf)
+        self._pdf_export_waiting_for_images = False
+        self._pdf_export_deferred_silent = False
 
         self.update_thread = UpdateCheckThread()
         self.update_thread.progress_changed.connect(self.on_update_progress_changed)
@@ -2197,11 +2199,39 @@ class MainWindow(mainwindow_cls):
             if not silent:
                 create_info_dialog(self.tr('Current project was not opened from a PDF file.'))
             return False
+
+        # The final page render is queued to ImgSaveThread from the page-finished
+        # callback. Connect before checking the state so a very short final write
+        # cannot finish between the check and signal connection.
+        if not self._pdf_export_waiting_for_images:
+            self._pdf_export_waiting_for_images = True
+            self._pdf_export_deferred_silent = silent
+            self.imsave_thread.finished.connect(self._on_pdf_image_save_finished)
+        if self.imsave_thread.isRunning() or self.imsave_thread.im_save_list:
+            if not silent:
+                create_info_dialog(self.tr('Waiting for rendered pages to finish saving.'))
+            # Tell batch/headless callers export is still pending.
+            return True
+        self._pdf_export_waiting_for_images = False
+        try:
+            self.imsave_thread.finished.disconnect(self._on_pdf_image_save_finished)
+        except (TypeError, RuntimeError):
+            pass
         if not self.export_pdf_thread.exportAsPdf(directory, self.imgtrans_proj.result_dir()):
             if not silent:
                 create_info_dialog(self.tr('A PDF export is already running.'))
             return False
         return True
+
+    def _on_pdf_image_save_finished(self) -> None:
+        if not self._pdf_export_waiting_for_images:
+            return
+        self._pdf_export_waiting_for_images = False
+        try:
+            self.imsave_thread.finished.disconnect(self._on_pdf_image_save_finished)
+        except (TypeError, RuntimeError):
+            pass
+        self.on_export_pdf(silent=self._pdf_export_deferred_silent)
 
     def on_fin_export_pdf(self, save_path: str, missing_pages: list) -> None:
         if save_path:

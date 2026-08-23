@@ -12,7 +12,34 @@ class M2M100Translator(BaseTranslator):
     concate_text = False
     _load_model_keys = {'translator', 'tokenizer'}
     params: Dict = {
-        'device': DEVICE_SELECTOR()
+        'device': DEVICE_SELECTOR(),
+        'compute_type': {
+            'type': 'selector',
+            'options': ['default', 'int8', 'int8_float16', 'float16', 'float32'],
+            'value': 'default',
+            'display_name': 'Compute Type',
+            'description': 'CTranslate2 precision/quantization. int8 reduces memory; float16 is faster on supported GPUs.',
+        },
+        'beam_size': {
+            'value': 2,
+            'display_name': 'Beam Size',
+            'description': 'Lower values are faster and use less memory.',
+        },
+        'max_batch_size': {
+            'value': 8,
+            'display_name': 'Max Batch Size',
+            'description': 'Number of text blocks translated together. Increase only when memory allows.',
+        },
+        'inter_threads': {
+            'value': 0,
+            'display_name': 'Inter Threads',
+            'description': 'CTranslate2 worker threads. 0 lets the runtime choose.',
+        },
+        'intra_threads': {
+            'value': 0,
+            'display_name': 'Intra Threads',
+            'description': 'CPU threads per worker. 0 lets the runtime choose.',
+        },
     }
 
     download_file_list = [{
@@ -143,9 +170,27 @@ class M2M100Translator(BaseTranslator):
 
     def _load_model(self):
         if self.translator is None:
-            self.translator = ctranslate2.Translator(CT_MODEL_PATH, device=self.device)
+            self.translator = ctranslate2.Translator(
+                CT_MODEL_PATH,
+                device=self.device,
+                **self._runtime_kwargs(),
+            )
         if self.tokenizer is None:
             self.tokenizer = transformers.AutoTokenizer.from_pretrained(CT_MODEL_PATH, clean_up_tokenization_spaces=True)
+
+    def _runtime_kwargs(self) -> Dict:
+        """Build version-tolerant CTranslate2 runtime options."""
+        kwargs = {}
+        compute_type = self.get_param_value('compute_type')
+        if compute_type and compute_type != 'default':
+            kwargs['compute_type'] = str(compute_type)
+        inter_threads = int(self.get_param_value('inter_threads') or 0)
+        intra_threads = int(self.get_param_value('intra_threads') or 0)
+        if inter_threads > 0:
+            kwargs['inter_threads'] = inter_threads
+        if intra_threads > 0:
+            kwargs['intra_threads'] = intra_threads
+        return kwargs
 
     def moveToDevice(self, device: str, precision: str = None):
         if self.device == device and self.translator is not None:
@@ -154,7 +199,11 @@ class M2M100Translator(BaseTranslator):
         old_translator = self.translator
         # CTranslate2 binds a Translator to its initial execution device, so a
         # device change needs a new runtime object. Keep the tokenizer in memory.
-        new_translator = ctranslate2.Translator(CT_MODEL_PATH, device=device)
+        new_translator = ctranslate2.Translator(
+            CT_MODEL_PATH,
+            device=device,
+            **self._runtime_kwargs(),
+        )
         self.translator = new_translator
         self.device = device
         if old_translator is not None:
@@ -168,7 +217,12 @@ class M2M100Translator(BaseTranslator):
         text = [self.tokenizer.convert_ids_to_tokens(self.tokenizer.encode(i)) for i in src_list]
         target_prefix = [self.tokenizer.lang_code_to_token[self.lang_map[self.lang_target]]]
 
-        results = self.translator.translate_batch(text, target_prefix=[target_prefix]*len(src_list))
+        results = self.translator.translate_batch(
+            text,
+            target_prefix=[target_prefix] * len(src_list),
+            beam_size=max(1, int(self.get_param_value('beam_size') or 1)),
+            max_batch_size=max(1, int(self.get_param_value('max_batch_size') or 1)),
+        )
         text_translated = [self.tokenizer.decode(self.tokenizer.convert_tokens_to_ids(i.hypotheses[0][1:])) for i in results]
         
         return text_translated

@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import os
 import os.path as osp
+import time
 from typing import Callable, Dict, List, Optional, Tuple
 
 from .logger import logger as LOGGER
@@ -302,13 +303,18 @@ def export_translated_pdf(
     result_dir: Optional[str] = None,
     save_path: Optional[str] = None,
     progress_cb: Optional[Callable[[int, int], None]] = None,
+    fast: bool = True,
 ) -> Tuple[str, List[str]]:
     """Rebuild a PDF from the translated page images of a PDF-backed project.
 
     Returns ``(save_path, missing_pages)``. Page sizes come from the manifest so the
     output keeps the original PDF page geometry; pages whose result image is missing
     fall back to the untranslated source render and are reported in ``missing_pages``.
+    ``fast`` skips the expensive whole-document garbage collection and stream
+    deflation pass. Page images are already encoded files, so this is the preferred
+    path for the interactive export workflow.
     """
+    started_at = time.perf_counter()
     pymupdf = _load_pymupdf()
     manifest = read_pdf_manifest(directory)
     if not manifest or not manifest['pages']:
@@ -353,8 +359,20 @@ def export_translated_pdf(
         if out.page_count == 0:
             raise PdfSupportError('No page images available to export')
         os.makedirs(osp.dirname(osp.abspath(save_path)), exist_ok=True)
-        out.save(save_path, deflate=True, garbage=3)
+        out.save(
+            save_path,
+            deflate=not fast,
+            garbage=0 if fast else 3,
+        )
     finally:
         out.close()
 
+    LOGGER.info(
+        'PDF export finished: pages=%d missing=%d elapsed=%.3fs fast=%s path=%s',
+        len(pages),
+        len(missing),
+        time.perf_counter() - started_at,
+        fast,
+        save_path,
+    )
     return save_path, missing

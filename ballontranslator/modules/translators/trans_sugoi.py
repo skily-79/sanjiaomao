@@ -9,6 +9,8 @@ class SugoiTranslator(BaseTranslator):
     dependencies = ['ctranslate2', 'sentencepiece']
 
     concate_text = False
+    # Sampling is enabled by the provider, so repeated calls are intentional.
+    dedupe_translation_sources = False
     params: Dict = {
         'device': DEVICE_SELECTOR()
     }

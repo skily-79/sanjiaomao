@@ -57,6 +57,7 @@ class InpaintUndoCommand(QUndoCommand):
 
     def redo(self) -> None:
         inpaint_rect = self.inpaint_rect
+        self.canvas.imgtrans_proj.ensure_inpainted_array_writable()
         img_array = self.canvas.imgtrans_proj.inpainted_array
         mask_array = self.canvas.imgtrans_proj.mask_array
         img_view = img_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
@@ -67,6 +68,7 @@ class InpaintUndoCommand(QUndoCommand):
 
     def undo(self) -> None:
         inpaint_rect = self.inpaint_rect
+        self.canvas.imgtrans_proj.ensure_inpainted_array_writable()
         img_array = self.canvas.imgtrans_proj.inpainted_array
         mask_array = self.canvas.imgtrans_proj.mask_array
         img_view = img_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
@@ -141,6 +143,7 @@ class RunBlkTransCommand(QUndoCommand):
             self.empty_command.redo()
 
         if self.mode > 1 and self.num_inpainted > 0:
+            self.canvas.imgtrans_proj.ensure_inpainted_array_writable()
             img_array = self.canvas.imgtrans_proj.inpainted_array
             mask_array = self.canvas.imgtrans_proj.mask_array
             for inpaint_rect, redo_img, redo_mask in zip(self.inpaint_rect_lst, self.redo_img_list, self.redo_mask_list):
@@ -170,6 +173,7 @@ class RunBlkTransCommand(QUndoCommand):
             self.empty_command.undo()
 
         if self.mode > 1 and self.num_inpainted > 0:
+            self.canvas.imgtrans_proj.ensure_inpainted_array_writable()
             img_array = self.canvas.imgtrans_proj.inpainted_array
             mask_array = self.canvas.imgtrans_proj.mask_array
             for inpaint_rect, undo_img, undo_mask in zip(self.inpaint_rect_lst, self.undo_img_list, self.undo_mask_list):

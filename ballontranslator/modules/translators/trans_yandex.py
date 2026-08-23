@@ -13,6 +13,7 @@ class YandexTranslator(BaseTranslator):
     }
 
     def _setup_translator(self):
+        self.session = requests.Session()
         self.lang_map['简体中文'] = 'zh'
         self.lang_map['日本語'] = 'ja'
         self.lang_map['English'] = 'en'
@@ -48,7 +49,7 @@ class YandexTranslator(BaseTranslator):
                 'lang': self.lang_map[self.lang_target],
                 'format': 'plain',
             }
-            response = requests.get(self.api_url_v2, params=params)
+            response = self.session.get(self.api_url_v2, params=params)
             if response.status_code == 200:
                 translated_text = response.json().get('text', [''])[0]
                 tr_list.append(translated_text)
@@ -68,7 +69,7 @@ class YandexTranslator(BaseTranslator):
             "Authorization": "Api-Key {0}".format(self.get_param_value('api_key'))
         }
 
-        response = requests.post(self.api_url, json=body, headers=headers)
+        response = self.session.post(self.api_url, json=body, headers=headers)
         if response.status_code == 200:
             translations = response.json().get('translations', [])
             tr_list = [tr.get('text', '') for tr in translations]

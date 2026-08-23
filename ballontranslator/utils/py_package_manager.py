@@ -37,6 +37,7 @@ DEFAULT_PACKAGE_IMPORT_NAMES = {
     'onnxruntime-gpu': ['onnxruntime'],
     'pillow': ['PIL'],
     'pillow-jxl-plugin': ['pillow_jxl'],
+    'pymupdf': ['pymupdf'],
     'protobuf': ['google.protobuf'],
     'pyqt5-qt5': [],
     'pyqt6-qt6': [],

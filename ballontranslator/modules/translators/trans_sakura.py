@@ -371,6 +371,9 @@ class SakuraTranslator(BaseTranslator):
     dependencies = ['openai>=2.8.1']
 
     concate_text = False
+    # Sakura uses stochastic generation (seed=-1); duplicate requests can
+    # legitimately produce different outputs, so preserve every call.
+    dedupe_translation_sources = False
     cht_require_convert = True
     params: Dict = {
         'low vram mode': {

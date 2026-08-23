@@ -1,4 +1,6 @@
 import threading
+import time
+from collections import deque
 from typing import Union, List, Callable
 import os.path as osp
 
@@ -328,7 +330,13 @@ class ModuleThread(QThread):
             self.terminate()
         self.imgtrans_proj = proj
         self.finished_counter = 0
-        self.pipeline_pagekey_queue.clear()
+        queue_condition = getattr(self, '_pipeline_queue_condition', None)
+        if queue_condition is None:
+            self.pipeline_pagekey_queue.clear()
+        else:
+            with queue_condition:
+                self.pipeline_pagekey_queue.clear()
+                queue_condition.notify_all()
         self.pipeline_stop_event = stop_event
 
     def requestCancelModuleInit(self):
@@ -454,10 +462,15 @@ class OCRThread(ModuleThread):
 class TranslateThread(ModuleThread):
 
     progress_changed = Signal(int)
+    # Keep a small amount of backpressure so detection/OCR cannot queue every
+    # page's mutable image state while a slow translator is still working.
+    pipeline_queue_max_size = 4
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__('translator', TRANSLATORS, *args, **kwargs)
         self.translator: BaseTranslator = self.module
+        self._pipeline_queue_condition = threading.Condition()
+        self.pipeline_pagekey_queue = deque()
 
     def _set_translator(self, translator: str):
         
@@ -628,7 +641,26 @@ class TranslateThread(ModuleThread):
         return success
 
     def push_pagekey_queue(self, page_key: str):
-        self.pipeline_pagekey_queue.append(page_key)
+        stop_event = self.pipeline_stop_event
+        with self._pipeline_queue_condition:
+            while len(self.pipeline_pagekey_queue) >= self.pipeline_queue_max_size:
+                if stop_event is not None and stop_event.is_set():
+                    return False
+                # Do not block the image pipeline forever if the worker exited
+                # unexpectedly before consuming the queued pages.
+                if not self.isRunning():
+                    return False
+                self._pipeline_queue_condition.wait(timeout=0.25)
+            if stop_event is not None and stop_event.is_set():
+                return False
+            self.pipeline_pagekey_queue.append(page_key)
+            self._pipeline_queue_condition.notify()
+            return True
+
+    def wake_pipeline_queue(self) -> None:
+        """Wake a producer/consumer waiting on the bounded page queue."""
+        with self._pipeline_queue_condition:
+            self._pipeline_queue_condition.notify_all()
 
     def runTranslatePipeline(self, imgtrans_proj: ProjImgTrans, stop_event: threading.Event):
         self.initImgtransPipeline(imgtrans_proj, stop_event)
@@ -645,11 +677,18 @@ class TranslateThread(ModuleThread):
                 self.module_thread_stopped.emit()
                 break
 
-            if len(self.pipeline_pagekey_queue) == 0:
-                stop_event.wait(0.1)
-                continue
-            
-            page_key = self.pipeline_pagekey_queue.pop(0)
+            with self._pipeline_queue_condition:
+                while not self.pipeline_pagekey_queue and not stop_event.is_set():
+                    self._pipeline_queue_condition.wait(timeout=0.25)
+                if stop_event.is_set():
+                    self.module_thread_stopped.emit()
+                    break
+                page_key = self.pipeline_pagekey_queue.popleft()
+                # Let the producer enqueue the next page immediately after a
+                # worker takes ownership of this page.
+                self._pipeline_queue_condition.notify_all()
+
+            started_at = time.perf_counter()
             self.blockSignals(True)
             try:
                 self._translate_page(self.imgtrans_proj, page_key)
@@ -675,6 +714,13 @@ class TranslateThread(ModuleThread):
             self.blockSignals(False)
             self.finished_counter += 1
             self.progress_changed.emit(self.finished_counter)
+            LOGGER.debug(
+                'Translation page finished: page=%s elapsed=%.3fs progress=%d/%d',
+                page_key,
+                time.perf_counter() - started_at,
+                self.finished_counter,
+                self.num_process_pages,
+            )
 
             if not self.pipeline_finished() and delay > 0:
                 stop_event.wait(delay)
@@ -768,6 +814,7 @@ class ImgtransThread(QThread):
     def requestStop(self):
         """请求停止当前任务"""
         self.stop_event.set()
+        self.translate_thread.wake_pipeline_queue()
 
     def _stop_on_stage_failure(
         self,
@@ -949,6 +996,7 @@ class ImgtransThread(QThread):
             to_inpaint = self.imgtrans_proj.inpainted_array
             im_h, im_w = tgt_img.shape[:2]
             progress_prod = 100. / len(blk_list) if len(blk_list) > 0 else 0
+            last_inpaint_progress = -1
             for ii, blk in enumerate(blk_list):
                 xyxy_ori = np.array(blk.xyxy, dtype=np.int64)
                 xyxy_ori[::2] = np.clip(xyxy_ori[::2], 0, im_w)
@@ -959,7 +1007,9 @@ class ImgtransThread(QThread):
                     xyxy = enlarge_window(xyxy_ori.tolist(), im_w, im_h)
                     xyxy = np.array(xyxy, dtype=np.int64)
                     x1, y1, x2, y2 = xyxy.astype(np.int64)
-                    im = np.copy(to_inpaint[y1: y2, x1: x2])
+                    # Inpainter backends need a contiguous crop, but avoid an
+                    # unconditional copy when the source slice is already safe.
+                    im = np.ascontiguousarray(to_inpaint[y1: y2, x1: x2])
                     maskseg_method = get_maskseg_method()
                     inpaint_mask_array, ballon_mask, bub_dict = maskseg_method(im, mask=tgt_mask[y1: y2, x1: x2])
                     mask = self.post_process_mask(inpaint_mask_array)
@@ -995,7 +1045,10 @@ class ImgtransThread(QThread):
                                 'inpaint_rect': [int(ox1), int(oy1), int(ox2), int(oy2)],
                                 'inpainted': inpainted[ry1: ry2, rx1: rx2]
                             }
-                    self.finish_blktrans_stage.emit('inpaint', int((ii+1) * progress_prod))
+                    progress = min(100, int((ii + 1) * progress_prod))
+                    if progress != last_inpaint_progress:
+                        self.finish_blktrans_stage.emit('inpaint', progress)
+                        last_inpaint_progress = progress
         self.finish_blktrans.emit(mode, blk_ids)
 
     def _imgtrans_pipeline(self):
@@ -1042,11 +1095,16 @@ class ImgtransThread(QThread):
                 LOGGER.info('Image translation pipeline stopped by user')
                 break
                 
+            page_started_at = time.perf_counter()
+            stage_times = {}
+            stage_started_at = page_started_at
             img = self.imgtrans_proj.read_img(imgname)
+            stage_times['read'] = time.perf_counter() - stage_started_at
             mask = blk_list = None
             need_save_mask = False
             blk_removed: List[TextBlock] = []
             if cfg_module.enable_detect:
+                stage_started_at = time.perf_counter()
                 # Detection can replace or reorder blocks, so old translations
                 # are never compatible even if detection later fails.
                 self.imgtrans_proj.begin_detection(imgname)
@@ -1076,11 +1134,13 @@ class ImgtransThread(QThread):
                     
                 self.imgtrans_proj.update_page_progress(imgname, RunStatus.FIN_DET)
                 self.update_detect_progress.emit(self.detect_counter)
+                stage_times['detect'] = time.perf_counter() - stage_started_at
 
             if blk_list is None:
                 blk_list = self.imgtrans_proj.pages[imgname] if imgname in self.imgtrans_proj.pages else []
 
             if cfg_module.enable_ocr:
+                stage_started_at = time.perf_counter()
                 if hasattr(self.ocr, 'set_stop_event'):
                     self.ocr.set_stop_event(self.stop_event)
                 try:
@@ -1147,6 +1207,7 @@ class ImgtransThread(QThread):
                     break
                 self.imgtrans_proj.update_page_progress(imgname, RunStatus.FIN_OCR)
                 self.update_ocr_progress.emit(self.ocr_counter)
+                stage_times['ocr'] = time.perf_counter() - stage_started_at
 
             if need_save_mask and mask is not None:
                 self.imgtrans_proj.save_mask(imgname, mask)
@@ -1154,8 +1215,12 @@ class ImgtransThread(QThread):
 
             # Headless mode uses this same router; it has no translation-only branch.
             if cfg_module.enable_translate:
+                stage_started_at = time.perf_counter()
                 if self.parallel_trans:
-                    self.translate_thread.push_pagekey_queue(imgname)
+                    if not self.translate_thread.push_pagekey_queue(imgname):
+                        LOGGER.warning('Translation worker stopped before accepting page %s.', imgname)
+                        self.requestStop()
+                        break
                 elif not low_vram_trans:
                     self._translate_full_page(
                         self.imgtrans_proj,
@@ -1164,12 +1229,17 @@ class ImgtransThread(QThread):
                     )
                     self.translate_counter += 1
                     self.update_translate_progress.emit(self.translate_counter)
+                if not self.parallel_trans and not low_vram_trans:
+                    stage_times['translate'] = time.perf_counter() - stage_started_at
+                else:
+                    stage_times['translate'] = 'queued'
 
             if self.isStopRequested():
                 LOGGER.info('Image translation pipeline stopped.')
                 break
                         
             if cfg_module.enable_inpaint:
+                stage_started_at = time.perf_counter()
                 if hasattr(self.inpainter, 'set_stop_event'):
                     self.inpainter.set_stop_event(self.stop_event)
                 if mask is None:
@@ -1201,9 +1271,20 @@ class ImgtransThread(QThread):
                 self.inpaint_counter += 1
                 self.imgtrans_proj.update_page_progress(imgname, RunStatus.FIN_INPAINT)
                 self.update_inpaint_progress.emit(self.inpaint_counter)
+                stage_times['inpaint'] = time.perf_counter() - stage_started_at
             else:
                 if len(blk_removed) > 0:
                     self.imgtrans_proj.load_mask_by_imgname
+
+            LOGGER.debug(
+                'Pipeline page stages: page=%s total=%.3fs %s',
+                imgname,
+                time.perf_counter() - page_started_at,
+                ', '.join(
+                    f'{name}={value:.3f}s' if isinstance(value, float) else f'{name}={value}'
+                    for name, value in stage_times.items()
+                ),
+            )
         
         if cfg_module.enable_translate and low_vram_trans and not self.isStopRequested():
             unload_modules(self, ['textdetector', 'inpainter', 'ocr'])
@@ -1213,6 +1294,7 @@ class ImgtransThread(QThread):
                     LOGGER.info('Translation stopped by user')
                     break
                     
+                page_started_at = time.perf_counter()
                 blk_list = self.imgtrans_proj.pages[imgname]
                 self._translate_full_page(
                     self.imgtrans_proj,
@@ -1221,6 +1303,13 @@ class ImgtransThread(QThread):
                 )
                 self.translate_counter += 1
                 self.update_translate_progress.emit(self.translate_counter)
+                elapsed = time.perf_counter() - page_started_at
+                LOGGER.debug(
+                    'Pipeline page stages: page=%s total=%.3fs translate=%.3fs mode=low_vram',
+                    imgname,
+                    elapsed,
+                    elapsed,
+                )
 
         self._emit_pipeline_stopped_if_ready(imgtrans_running=False)
 
