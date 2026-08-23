@@ -29,9 +29,11 @@ from ballontranslator.utils.config import (
     text_styles,
 )
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
+from ballontranslator.utils.io_utils import find_all_imgs
 from ballontranslator.utils.pdf_utils import (
     PdfSupportError,
     extract_pdf_pages,
+    find_pdf_files,
     is_pdf_path,
     is_pdf_project,
     pdf_workdir_for,
@@ -129,6 +131,9 @@ class MainWindow(mainwindow_cls):
         self._run_imgtrans_wo_textstyle_update = False
         self._render_only = False
         self._render_global_format = None
+        self.exec_dirs: List[str] = []
+        self._batch_mode = False
+        self._batch_silent_export = False
 
         self.setupThread()
         self.setupUi()
@@ -682,13 +687,68 @@ class MainWindow(mainwindow_cls):
             proj_path = self.prepare_pdf_project(proj_path)
             if proj_path is None:
                 return
+            self.openDir(proj_path)
+            if pcfg.let_textstyle_indep_flag and not shared.HEADLESS:
+                self.load_textstyle_from_proj_dir(from_proj=True)
+            return
+
         if osp.isdir(proj_path):
+            batch_items = self._expand_path_for_batch(proj_path)
+            if len(batch_items) > 1:
+                self.run_batch(batch_items)
+                return
+            if len(batch_items) == 1 and is_pdf_path(batch_items[0]):
+                work_dir = self.prepare_pdf_project(batch_items[0])
+                if work_dir is None:
+                    return
+                self.openDir(work_dir)
+                if pcfg.let_textstyle_indep_flag and not shared.HEADLESS:
+                    self.load_textstyle_from_proj_dir(from_proj=True)
+                return
             self.openDir(proj_path)
         else:
             self.openJsonProj(proj_path)
-        
+
         if pcfg.let_textstyle_indep_flag and not shared.HEADLESS:
             self.load_textstyle_from_proj_dir(from_proj=True)
+
+    def _expand_path_for_batch(self, path: str) -> List[str]:
+        """Expand a batch queue entry into concrete pipeline targets.
+
+        A directory with images stays one queue item; every PDF in the same
+        folder becomes its own item, matching how image folders are opened.
+        """
+        if is_pdf_path(path):
+            return [path]
+        if not osp.isdir(path):
+            return [path]
+        pdfs = find_pdf_files(path)
+        imgs = find_all_imgs(path, abs_path=False)
+        items: List[str] = []
+        if imgs:
+            items.append(path)
+        items.extend(pdfs)
+        return items if items else [path]
+
+    def _wait_for_imsave_blocking(self) -> None:
+        while self.imsave_thread.isRunning():
+            time.sleep(0.1)
+
+    def _wait_for_imsave_then(self, callback) -> None:
+        if self.imsave_thread.isRunning():
+            def on_done():
+                try:
+                    self.imsave_thread.finished.disconnect(on_done)
+                except (TypeError, RuntimeError):
+                    pass
+                callback()
+            self.imsave_thread.finished.connect(on_done)
+        else:
+            callback()
+
+    def _continue_after_pipeline_export(self) -> None:
+        if self._batch_mode or shared.HEADLESS:
+            self.run_next_dir()
 
     def prepare_pdf_project(self, pdf_path: str) -> Optional[str]:
         """Rasterise *pdf_path* into an image working directory and return it.
@@ -844,6 +904,8 @@ class MainWindow(mainwindow_cls):
         if self.auto_tate_chu_yoko_thread.isRunning():
             self.auto_tate_chu_yoko_thread.request_stop()
             self.auto_tate_chu_yoko_thread.wait()
+        if self.export_pdf_thread.isRunning():
+            self.export_pdf_thread.wait()
         if not self.imgtrans_proj.is_empty:
             self.conditional_save(keep_exist_as_backup=True)
         while True:
@@ -1716,11 +1778,22 @@ class MainWindow(mainwindow_cls):
             self.on_export_txt('translation')
         if shared.args.export_source_txt:
             self.on_export_txt('source')
-        # Rebuild the PDF only after rendering finished, so result/ holds the final pages.
-        if pcfg.pdf_export_on_pipeline_finished:
-            self.on_export_pdf(silent=True)
-        if shared.HEADLESS:
-            self.run_next_dir()
+
+        def after_imsave():
+            exported_async = False
+            directory = self.imgtrans_proj.directory
+            if directory and is_pdf_project(directory) and (
+                pcfg.pdf_export_on_pipeline_finished
+                or self._batch_mode
+                or shared.HEADLESS
+            ):
+                silent = self._batch_silent_export or shared.HEADLESS
+                if self.on_export_pdf(silent=silent):
+                    exported_async = True
+            if not exported_async:
+                self._continue_after_pipeline_export()
+
+        self._wait_for_imsave_then(after_imsave)
 
     def postprocess_translations(self, blk_list: List[TextBlock]) -> None:
         if not is_cjk(pcfg.module.translate_target):
@@ -2113,26 +2186,42 @@ class MainWindow(mainwindow_cls):
     def on_export_pdf_triggered(self) -> None:
         self.on_export_pdf(silent=False)
 
-    def on_export_pdf(self, silent: bool = False) -> None:
+    def on_export_pdf(self, silent: bool = False) -> bool:
         """Repack the rendered pages of a PDF-backed project into a translated PDF.
 
-        *silent* is used by the automatic post-pipeline export so non-PDF projects and a
-        busy export thread stay no-ops instead of interrupting the user.
+        Returns True when an export job was started. *silent* suppresses user-facing
+        dialogs for automatic post-pipeline and batch/headless runs.
         """
         directory = self.imgtrans_proj.directory
         if not directory or not is_pdf_project(directory):
             if not silent:
                 create_info_dialog(self.tr('Current project was not opened from a PDF file.'))
-            return
-        if not self.export_pdf_thread.exportAsPdf(directory, self.imgtrans_proj.result_dir()) and not silent:
-            create_info_dialog(self.tr('A PDF export is already running.'))
+            return False
+        if not self.export_pdf_thread.exportAsPdf(directory, self.imgtrans_proj.result_dir()):
+            if not silent:
+                create_info_dialog(self.tr('A PDF export is already running.'))
+            return False
+        return True
 
     def on_fin_export_pdf(self, save_path: str, missing_pages: list) -> None:
-        msg = self.tr('Translated PDF exported to ') + save_path
-        if missing_pages:
-            msg += '\n' + self.tr('Pages without rendered result (original kept): ') + '\n'
-            msg += '\n'.join(missing_pages)
-        create_info_dialog(msg)
+        if save_path:
+            if self._batch_silent_export:
+                LOGGER.info(self.tr('Translated PDF exported to ') + save_path)
+                if missing_pages:
+                    LOGGER.warning(
+                        self.tr('Pages without rendered result (original kept): ')
+                        + ', '.join(missing_pages)
+                    )
+            else:
+                msg = self.tr('Translated PDF exported to ') + save_path
+                if missing_pages:
+                    msg += '\n' + self.tr('Pages without rendered result (original kept): ') + '\n'
+                    msg += '\n'.join(missing_pages)
+                create_info_dialog(msg)
+        elif self._batch_silent_export:
+            LOGGER.error(self.tr('PDF export failed.'))
+        if self._batch_mode or shared.HEADLESS:
+            self._continue_after_pipeline_export()
 
     def on_export_txt(self, dump_target, suffix='.txt'):
         try:
@@ -2262,22 +2351,30 @@ class MainWindow(mainwindow_cls):
 
         self.canvas.push_undo_command(PasteSrcItemsCommand(src_widget_list, text_list))
     
-    def run_batch(self, exec_dirs: Union[List, str], **kwargs):
-        if not isinstance(exec_dirs, List):
-            exec_dirs = exec_dirs.split(',')
-        valid_dirs = []
+    def run_batch(self, exec_dirs: Union[List, str] = '', **kwargs):
+        if not exec_dirs:
+            return
+        if not isinstance(exec_dirs, list):
+            exec_dirs = [p.strip() for p in exec_dirs.split(',') if p.strip()]
+        expanded: List[str] = []
         for d in exec_dirs:
-            if osp.exists(d):
-                valid_dirs.append(d)
-            else:
-                LOGGER.warning(f'target directory {d} does not exist.')
-        self.exec_dirs = valid_dirs
+            if not osp.exists(d):
+                LOGGER.warning(f'target path {d} does not exist.')
+                continue
+            expanded.extend(self._expand_path_for_batch(d))
+        if not expanded:
+            LOGGER.warning('no valid paths in batch queue.')
+            return
+        self.exec_dirs = expanded
+        self._batch_mode = len(self.exec_dirs) > 1
+        self._batch_silent_export = self._batch_mode or shared.HEADLESS
         self.run_next_dir()
 
     def run_next_dir(self):
         if len(self.exec_dirs) == 0:
-            while self.imsave_thread.isRunning():
-                time.sleep(0.1)
+            self._batch_mode = False
+            self._batch_silent_export = False
+            self._wait_for_imsave_blocking()
             LOGGER.info(f'finished translating all dirs, please enter next dirs to translate (separated by comma). enter "exit" to quit app.')
             new_exec_dirs = input()
             if new_exec_dirs.strip().lower() == 'exit':
@@ -2287,9 +2384,26 @@ class MainWindow(mainwindow_cls):
             self.run_batch(new_exec_dirs)
             return
         d = self.exec_dirs.pop(0)
-        
+
         LOGGER.info(f'translating {d} ...')
-        self.openDir(d)
+        if is_pdf_path(d):
+            work_dir = self.prepare_pdf_project(d)
+            if work_dir is None:
+                self.run_next_dir()
+                return
+            d = work_dir
+        elif not osp.isdir(d):
+            LOGGER.warning(f'skipping unsupported batch path: {d}')
+            self.run_next_dir()
+            return
+
+        try:
+            self.openDir(d)
+        except Exception as e:
+            LOGGER.error(f'failed to open batch path {d}: {e}')
+            self.run_next_dir()
+            return
+
         shared.pbar = {}
         npages = len(self.imgtrans_proj.pages)
         if npages > 0:
@@ -2301,6 +2415,10 @@ class MainWindow(mainwindow_cls):
                 shared.pbar['translate'] = tqdm(range(npages), desc="Translation")
             if pcfg.module.enable_inpaint:
                 shared.pbar['inpaint'] = tqdm(range(npages), desc="Inpaint")
+        if npages == 0:
+            LOGGER.warning(f'no pages found in {d}, skipping.')
+            self.run_next_dir()
+            return
         self.on_run_imgtrans()
 
     def on_create_errdialog(self, error_msg: str, detail_traceback: str = '', exception_type: str = ''):

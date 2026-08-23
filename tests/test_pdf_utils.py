@@ -14,6 +14,7 @@ from ballontranslator.utils.pdf_utils import (
     clamp_pdf_dpi,
     export_translated_pdf,
     extract_pdf_pages,
+    find_pdf_files,
     is_pdf_path,
     is_pdf_project,
     manifest_path,
@@ -60,6 +61,22 @@ class PdfPathHelperTests(unittest.TestCase):
     def test_module_doctests(self):
         results = doctest.testmod(pdf_utils, verbose=False)
         self.assertEqual(results.failed, 0)
+
+    def test_find_pdf_files_in_directory(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            comic_a = osp.join(tmp_dir, 'a.pdf')
+            comic_b = osp.join(tmp_dir, 'b.PDF')
+            with open(comic_a, 'wb') as f:
+                f.write(b'')
+            with open(comic_b, 'wb') as f:
+                f.write(b'')
+            with open(osp.join(tmp_dir, 'notes.txt'), 'w', encoding='utf8') as f:
+                f.write('ignore me')
+
+            self.assertEqual(find_pdf_files(tmp_dir), [comic_a, comic_b])
+            self.assertEqual(find_pdf_files(comic_a), [comic_a])
+            self.assertEqual(find_pdf_files(osp.join(tmp_dir, 'notes.txt')), [])
+            self.assertEqual(find_pdf_files('/nonexistent/dir'), [])
 
 
 class PdfManifestTests(unittest.TestCase):

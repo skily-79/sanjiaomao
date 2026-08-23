@@ -78,6 +78,26 @@ def is_pdf_path(path: str) -> bool:
     return isinstance(path, str) and osp.splitext(path)[1].lower() in PDF_EXT
 
 
+def find_pdf_files(path: str) -> List[str]:
+    """Return the PDF files under *path*, or the single file when *path* is a PDF.
+
+    Directories are scanned non-recursively so a folder of PDFs behaves like a
+    folder of images: each PDF becomes one pipeline queue item.
+
+    >>> find_pdf_files('/nonexistent/dir')
+    []
+    """
+    if isinstance(path, str) and osp.isfile(path):
+        return [path] if is_pdf_path(path) else []
+    if not isinstance(path, str) or not osp.isdir(path):
+        return []
+    return [
+        osp.join(path, name)
+        for name in sorted(os.listdir(path))
+        if is_pdf_path(name)
+    ]
+
+
 def clamp_pdf_dpi(dpi) -> int:
     try:
         dpi = int(dpi)

@@ -183,6 +183,8 @@ class ExportPdfThread(ThreadBase):
     """
 
     fin_export = Signal(str, list)
+    progress_changed = Signal(int)
+    progress_hidden = Signal()
     _thread_exception_type = 'ExportPdfThread'
     _thread_error_msg = 'Failed to export PDF.'
 
@@ -193,6 +195,8 @@ class ExportPdfThread(ThreadBase):
         self.save_path: str = None
         self.progress_bar = ProgressMessageBox('Export PDF: ')
         self.progress_bar.setTaskName(self.tr('Export as PDF: '))
+        self.progress_changed.connect(self.progress_bar.updateTaskProgress)
+        self.progress_hidden.connect(self.progress_bar.hide)
 
     def exportAsPdf(self, directory: str, result_dir: str, save_path: str = None) -> bool:
         if self.job is not None or self.isRunning():
@@ -207,13 +211,14 @@ class ExportPdfThread(ThreadBase):
         return True
 
     def on_exec_failed(self):
-        self.progress_bar.hide()
+        self.progress_hidden.emit()
+        self.fin_export.emit('', [])
 
     def _export_pdf(self):
         from ballontranslator.utils.pdf_utils import export_translated_pdf
 
         def on_page(done: int, total: int):
-            self.progress_bar.updateTaskProgress(int(done / max(total, 1) * 100))
+            self.progress_changed.emit(int(done / max(total, 1) * 100))
 
         try:
             save_path, missing = export_translated_pdf(
@@ -223,7 +228,7 @@ class ExportPdfThread(ThreadBase):
                 progress_cb=on_page,
             )
         finally:
-            self.progress_bar.hide()
+            self.progress_hidden.emit()
         self.fin_export.emit(save_path, missing)
 
 
