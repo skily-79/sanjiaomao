@@ -29,6 +29,13 @@ from ballontranslator.utils.config import (
     text_styles,
 )
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
+from ballontranslator.utils.pdf_utils import (
+    PdfSupportError,
+    extract_pdf_pages,
+    is_pdf_path,
+    is_pdf_project,
+    pdf_workdir_for,
+)
 from .canvas import Canvas
 from .configpanel import ConfigPanel
 from .module_manager import ModuleManager
@@ -42,7 +49,7 @@ from .text_engine.editing.manager import (
 )
 from .mainwindowbars import TitleBar, LeftBar, BottomBar
 from .menu_style import install_app_style_filters
-from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread
+from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread, ExportPdfThread
 from .update_thread import UpdateCheckThread
 from .update_dialog import UpdateReleaseDialog
 from .run_pipeline_dialog import RunPipelineDialog
@@ -168,6 +175,9 @@ class MainWindow(mainwindow_cls):
         self.export_doc_thread.fin_io.connect(self.on_fin_export_doc)
         self.import_doc_thread = ImportDocThread(self)
         self.import_doc_thread.fin_io.connect(self.on_fin_import_doc)
+        self.export_pdf_thread = ExportPdfThread()
+        self.export_pdf_thread.fin_export.connect(self.on_fin_export_pdf)
+
         self.update_thread = UpdateCheckThread()
         self.update_thread.progress_changed.connect(self.on_update_progress_changed)
         self.update_thread.update_finished.connect(self.on_update_finished)
@@ -228,6 +238,8 @@ class MainWindow(mainwindow_cls):
         self.leftBar.export_src_md.connect(lambda : self.on_export_txt(dump_target='source', suffix='.md'))
         self.leftBar.export_trans_md.connect(lambda : self.on_export_txt(dump_target='translation', suffix='.md'))
         self.leftBar.import_trans_txt.connect(self.on_import_trans_txt)
+        # QAction.triggered passes `checked`, so route through a no-arg slot.
+        self.leftBar.export_pdf.connect(self.on_export_pdf_triggered)
 
         self.pageList = PageListView()
         self.pageList.setObjectName('PageListArea')
@@ -666,6 +678,10 @@ class MainWindow(mainwindow_cls):
         self.retranslateUI()
 
     def OpenProj(self, proj_path: str):
+        if is_pdf_path(proj_path):
+            proj_path = self.prepare_pdf_project(proj_path)
+            if proj_path is None:
+                return
         if osp.isdir(proj_path):
             self.openDir(proj_path)
         else:
@@ -673,6 +689,43 @@ class MainWindow(mainwindow_cls):
         
         if pcfg.let_textstyle_indep_flag and not shared.HEADLESS:
             self.load_textstyle_from_proj_dir(from_proj=True)
+
+    def prepare_pdf_project(self, pdf_path: str) -> Optional[str]:
+        """Rasterise *pdf_path* into an image working directory and return it.
+
+        The pipeline only consumes directories of images, so a PDF is converted up
+        front. Returns None when conversion is unavailable or fails, in which case the
+        caller must not continue opening the project.
+        """
+        try:
+            work_dir = pdf_workdir_for(pdf_path)
+            progress = ProgressMessageBox(self.tr('Loading PDF: '), False, self) if not shared.HEADLESS else None
+            if progress is not None:
+                progress.updateTaskProgress(0)
+                progress.show()
+                QApplication.processEvents()
+
+            def on_page(done: int, total: int):
+                if progress is not None:
+                    progress.updateTaskProgress(int(done / max(total, 1) * 100))
+                    QApplication.processEvents()
+
+            try:
+                extract_pdf_pages(
+                    pdf_path,
+                    out_dir=work_dir,
+                    dpi=pcfg.pdf_import_dpi,
+                    progress_cb=on_page,
+                )
+            finally:
+                if progress is not None:
+                    progress.hide()
+            return work_dir
+        except PdfSupportError as e:
+            create_error_dialog(e, self.tr('Failed to open PDF ') + pdf_path)
+        except Exception as e:
+            create_error_dialog(e, self.tr('Failed to open PDF ') + pdf_path)
+        return None
 
     def load_textstyle_from_proj_dir(self, from_proj=False):
         if from_proj:
@@ -1663,6 +1716,9 @@ class MainWindow(mainwindow_cls):
             self.on_export_txt('translation')
         if shared.args.export_source_txt:
             self.on_export_txt('source')
+        # Rebuild the PDF only after rendering finished, so result/ holds the final pages.
+        if pcfg.pdf_export_on_pipeline_finished:
+            self.on_export_pdf(silent=True)
         if shared.HEADLESS:
             self.run_next_dir()
 
@@ -2053,6 +2109,30 @@ class MainWindow(mainwindow_cls):
 
     def on_import_doc(self):
         self.import_doc_thread.importDoc(self.imgtrans_proj)
+
+    def on_export_pdf_triggered(self) -> None:
+        self.on_export_pdf(silent=False)
+
+    def on_export_pdf(self, silent: bool = False) -> None:
+        """Repack the rendered pages of a PDF-backed project into a translated PDF.
+
+        *silent* is used by the automatic post-pipeline export so non-PDF projects and a
+        busy export thread stay no-ops instead of interrupting the user.
+        """
+        directory = self.imgtrans_proj.directory
+        if not directory or not is_pdf_project(directory):
+            if not silent:
+                create_info_dialog(self.tr('Current project was not opened from a PDF file.'))
+            return
+        if not self.export_pdf_thread.exportAsPdf(directory, self.imgtrans_proj.result_dir()) and not silent:
+            create_info_dialog(self.tr('A PDF export is already running.'))
+
+    def on_fin_export_pdf(self, save_path: str, missing_pages: list) -> None:
+        msg = self.tr('Translated PDF exported to ') + save_path
+        if missing_pages:
+            msg += '\n' + self.tr('Pages without rendered result (original kept): ') + '\n'
+            msg += '\n'.join(missing_pages)
+        create_info_dialog(msg)
 
     def on_export_txt(self, dump_target, suffix='.txt'):
         try:

@@ -175,6 +175,58 @@ class ImportDocThread(ImgTransProjFileIOThread):
 
     
 
+class ExportPdfThread(ThreadBase):
+    """Rebuild the translated PDF of a PDF-backed project off the main thread.
+
+    ``fin_export`` carries ``(save_path, missing_pages)`` so the UI can report pages
+    that fell back to the untranslated render.
+    """
+
+    fin_export = Signal(str, list)
+    _thread_exception_type = 'ExportPdfThread'
+    _thread_error_msg = 'Failed to export PDF.'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.directory: str = None
+        self.result_dir: str = None
+        self.save_path: str = None
+        self.progress_bar = ProgressMessageBox('Export PDF: ')
+        self.progress_bar.setTaskName(self.tr('Export as PDF: '))
+
+    def exportAsPdf(self, directory: str, result_dir: str, save_path: str = None) -> bool:
+        if self.job is not None or self.isRunning():
+            return False
+        self.directory = directory
+        self.result_dir = result_dir
+        self.save_path = save_path
+        self.job = self._export_pdf
+        self.start()
+        self.progress_bar.updateTaskProgress(0)
+        self.progress_bar.show()
+        return True
+
+    def on_exec_failed(self):
+        self.progress_bar.hide()
+
+    def _export_pdf(self):
+        from ballontranslator.utils.pdf_utils import export_translated_pdf
+
+        def on_page(done: int, total: int):
+            self.progress_bar.updateTaskProgress(int(done / max(total, 1) * 100))
+
+        try:
+            save_path, missing = export_translated_pdf(
+                self.directory,
+                result_dir=self.result_dir,
+                save_path=self.save_path,
+                progress_cb=on_page,
+            )
+        finally:
+            self.progress_bar.hide()
+        self.fin_export.emit(save_path, missing)
+
+
 class MergeThread(ThreadBase):
     """区域合并后台线程"""
     progress_changed = Signal(int, int)  # (当前进度, 总数)
