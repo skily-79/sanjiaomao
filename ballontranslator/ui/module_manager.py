@@ -1,4 +1,6 @@
 import threading
+import time
+from collections import deque
 from typing import Union, List, Callable
 import os.path as osp
 
@@ -328,7 +330,13 @@ class ModuleThread(QThread):
             self.terminate()
         self.imgtrans_proj = proj
         self.finished_counter = 0
-        self.pipeline_pagekey_queue.clear()
+        queue_condition = getattr(self, '_pipeline_queue_condition', None)
+        if queue_condition is None:
+            self.pipeline_pagekey_queue.clear()
+        else:
+            with queue_condition:
+                self.pipeline_pagekey_queue.clear()
+                queue_condition.notify_all()
         self.pipeline_stop_event = stop_event
 
     def requestCancelModuleInit(self):
@@ -454,10 +462,15 @@ class OCRThread(ModuleThread):
 class TranslateThread(ModuleThread):
 
     progress_changed = Signal(int)
+    # Keep a small amount of backpressure so detection/OCR cannot queue every
+    # page's mutable image state while a slow translator is still working.
+    pipeline_queue_max_size = 4
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__('translator', TRANSLATORS, *args, **kwargs)
         self.translator: BaseTranslator = self.module
+        self._pipeline_queue_condition = threading.Condition()
+        self.pipeline_pagekey_queue = deque()
 
     def _set_translator(self, translator: str):
         
@@ -628,7 +641,26 @@ class TranslateThread(ModuleThread):
         return success
 
     def push_pagekey_queue(self, page_key: str):
-        self.pipeline_pagekey_queue.append(page_key)
+        stop_event = self.pipeline_stop_event
+        with self._pipeline_queue_condition:
+            while len(self.pipeline_pagekey_queue) >= self.pipeline_queue_max_size:
+                if stop_event is not None and stop_event.is_set():
+                    return False
+                # Do not block the image pipeline forever if the worker exited
+                # unexpectedly before consuming the queued pages.
+                if not self.isRunning():
+                    return False
+                self._pipeline_queue_condition.wait(timeout=0.25)
+            if stop_event is not None and stop_event.is_set():
+                return False
+            self.pipeline_pagekey_queue.append(page_key)
+            self._pipeline_queue_condition.notify()
+            return True
+
+    def wake_pipeline_queue(self) -> None:
+        """Wake a producer/consumer waiting on the bounded page queue."""
+        with self._pipeline_queue_condition:
+            self._pipeline_queue_condition.notify_all()
 
     def runTranslatePipeline(self, imgtrans_proj: ProjImgTrans, stop_event: threading.Event):
         self.initImgtransPipeline(imgtrans_proj, stop_event)
@@ -645,11 +677,18 @@ class TranslateThread(ModuleThread):
                 self.module_thread_stopped.emit()
                 break
 
-            if len(self.pipeline_pagekey_queue) == 0:
-                stop_event.wait(0.1)
-                continue
-            
-            page_key = self.pipeline_pagekey_queue.pop(0)
+            with self._pipeline_queue_condition:
+                while not self.pipeline_pagekey_queue and not stop_event.is_set():
+                    self._pipeline_queue_condition.wait(timeout=0.25)
+                if stop_event.is_set():
+                    self.module_thread_stopped.emit()
+                    break
+                page_key = self.pipeline_pagekey_queue.popleft()
+                # Let the producer enqueue the next page immediately after a
+                # worker takes ownership of this page.
+                self._pipeline_queue_condition.notify_all()
+
+            started_at = time.perf_counter()
             self.blockSignals(True)
             try:
                 self._translate_page(self.imgtrans_proj, page_key)
@@ -675,6 +714,13 @@ class TranslateThread(ModuleThread):
             self.blockSignals(False)
             self.finished_counter += 1
             self.progress_changed.emit(self.finished_counter)
+            LOGGER.debug(
+                'Translation page finished: page=%s elapsed=%.3fs progress=%d/%d',
+                page_key,
+                time.perf_counter() - started_at,
+                self.finished_counter,
+                self.num_process_pages,
+            )
 
             if not self.pipeline_finished() and delay > 0:
                 stop_event.wait(delay)
@@ -768,6 +814,7 @@ class ImgtransThread(QThread):
     def requestStop(self):
         """请求停止当前任务"""
         self.stop_event.set()
+        self.translate_thread.wake_pipeline_queue()
 
     def _stop_on_stage_failure(
         self,
@@ -1155,7 +1202,10 @@ class ImgtransThread(QThread):
             # Headless mode uses this same router; it has no translation-only branch.
             if cfg_module.enable_translate:
                 if self.parallel_trans:
-                    self.translate_thread.push_pagekey_queue(imgname)
+                    if not self.translate_thread.push_pagekey_queue(imgname):
+                        LOGGER.warning('Translation worker stopped before accepting page %s.', imgname)
+                        self.requestStop()
+                        break
                 elif not low_vram_trans:
                     self._translate_full_page(
                         self.imgtrans_proj,

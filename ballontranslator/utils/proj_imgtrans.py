@@ -347,12 +347,28 @@ class ProjImgTrans:
                 self.mask_array = np.zeros((im_h, im_w), dtype=np.uint8)
             self.inpainted_array = self.load_inpainted_by_imgname(imgname)
             if self.inpainted_array is None:
-                self.inpainted_array = np.copy(self.img_array)
+                # Most pages are not inpainted. Share the source until a
+                # drawing/inpaint command needs to mutate the working image.
+                self.inpainted_array = self.img_array
         else:
             self.current_img = None
             self.img_array = None
             self.mask_array = None
             self.inpainted_array = None
+
+    def ensure_inpainted_array_writable(self) -> np.ndarray:
+        """Detach the working image from the source before an in-place edit.
+
+        >>> project = ProjImgTrans()
+        >>> project.img_array = np.zeros((1, 1, 3), dtype=np.uint8)
+        >>> project.inpainted_array = project.img_array
+        >>> writable = project.ensure_inpainted_array_writable()
+        >>> writable is project.img_array
+        False
+        """
+        if self.inpainted_array is self.img_array and self.img_array is not None:
+            self.inpainted_array = np.copy(self.img_array)
+        return self.inpainted_array
 
     def current_has_alpha(self):
         if self.current_img is None:
