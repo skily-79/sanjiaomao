@@ -1060,33 +1060,16 @@ class RunPipelineDialogTests(unittest.TestCase):
         )
         self.assertFalse(any(action.isSeparator() for action in view_actions[:2]))
         self.assertFalse(hasattr(title_bar, 'runToolBtn'))
-        self.assertEqual(title_bar.sponsorToolBtn.text(), 'Sponsor')
-        self.assertFalse(title_bar.sponsorToolBtn.icon().isNull())
-        self.assertEqual(
-            [action.text() for action in title_bar.sponsorToolBtn.menu().actions()],
-            ['Patreon', 'Afdian'],
-        )
+        self.assertFalse(hasattr(title_bar, 'sponsorToolBtn'))
         self.assertEqual(
             [
                 action.text()
                 for action in title_bar.toolsToolBtn.menu().actions()
                 if not action.isSeparator()
             ],
-            ['区域合并工具', 'Font Exclusion'],
+            ['区域合并工具', 'Path Reorder', 'Font Exclusion'],
         )
         self.assertTrue(hasattr(title_bar, 'font_exclusion_trigger'))
-        with patch(
-            'ballontranslator.ui.mainwindowbars.QDesktopServices.openUrl'
-        ) as open_url:
-            title_bar.patreonSponsorAction.trigger()
-            title_bar.afdianSponsorAction.trigger()
-        self.assertEqual(
-            [call.args[0].toString() for call in open_url.call_args_list],
-            [
-                'https://patreon.com/dreMaze',
-                'https://afdian.com/a/dmMaze',
-            ],
-        )
 
         emitted = []
         title_bar.show_module.connect(lambda idx, checked: emitted.append((idx, checked)))

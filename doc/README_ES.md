@@ -180,12 +180,9 @@ python launch.py --headless --exec_dirs "[DIR_1],[DIR_2]..."
 La configuración (idioma de origen, idioma de destino, modelo de inpainting, etc.) se cargará desde config/config.json. Si el tamaño de la fuente renderizada no es correcto, especifique manualmente el DPI lógico mediante `--ldpi`. Los valores típicos son 96 y 72.
 
 ## Módulos de automatización
-Este proyecto depende en gran medida de [manga-image-translator](https://github.com/zyddnys/manga-image-translator). Los servicios en línea y la formación de modelos no son baratos, así que por favor considere hacer una donación al proyecto:
-- Ko-fi: [https://ko-fi.com/voilelabs](https://ko-fi.com/voilelabs)
-- Patreon: [https://www.patreon.com/voilelabs](https://www.patreon.com/voilelabs)
-- 爱发电: [https://afdian.net/@voilelabs](https://afdian.net/@voilelabs)
+Este proyecto depende en gran medida de [manga-image-translator](https://github.com/zyddnys/manga-image-translator).
 
-El [traductor de Sugoi](https://sugoitranslator.com/) fue creado por [mingshiba](https://www.patreon.com/mingshiba).
+El [traductor de Sugoi](https://sugoitranslator.com/) fue creado por mingshiba.
 
 ## Detección de texto
  * Permite detectar texto en inglés y japonés. El código de entrenamiento y más detalles en [comic-text-detector](https://github.com/dmMaze/comic-text-detector).

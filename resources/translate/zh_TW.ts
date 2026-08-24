@@ -4983,16 +4983,6 @@ All existing translation results will be cleared!</source>
         <translation>字體排除</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="443"/>
-        <source>Sponsor</source>
-        <translation>贊助</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="456"/>
-        <source>Afdian</source>
-        <translation>愛發電</translation>
-    </message>
-    <message>
         <source>Drawing Board </source>
         <translation type="vanished">畫板 </translation>
     </message>
@@ -5282,16 +5272,6 @@ All existing translation results will be cleared!</source>
         <location filename="../../ballontranslator/ui/update_dialog.py" line="167"/>
         <source>A new version is available</source>
         <translation>發現新版本</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/update_dialog.py" line="213"/>
-        <source>sponsoring this project</source>
-        <translation>贊助</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/update_dialog.py" line="221"/>
-        <source>Consider %1 if it has been helpful to you.</source>
-        <translation>如果這個項目對你有所幫助，請考慮%1。</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/update_dialog.py" line="236"/>

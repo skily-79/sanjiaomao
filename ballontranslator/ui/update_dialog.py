@@ -204,31 +204,6 @@ class UpdateReleaseDialog(QDialog):
             metadata_label.setWordWrap(True)
             layout.addWidget(metadata_label)
 
-        normalized_language = (display_language or '').replace('_', '-').casefold()
-        sponsor_url = (
-            'https://afdian.com/a/dmMaze'
-            if normalized_language == 'zh-cn'
-            else 'https://patreon.com/dreMaze'
-        )
-        sponsor_link_text = self.tr('sponsoring this project')
-        sponsor_link = (
-            f'<a style="color: rgb(30, 147, 229); text-decoration: none;" '
-            f'href="{sponsor_url}">{sponsor_link_text}</a>'
-        )
-        sponsor_message = QLabel(surface)
-        sponsor_message.setObjectName('UpdateReleaseSponsorMessage')
-        sponsor_message.setText(
-            self.tr('Consider %1 if it has been helpful to you.').replace(
-                '%1', sponsor_link
-            )
-        )
-        sponsor_message.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextBrowserInteraction
-        )
-        sponsor_message.setOpenExternalLinks(True)
-        sponsor_message.setWordWrap(True)
-        layout.addWidget(sponsor_message)
-
         notes_section = QVBoxLayout()
         notes_section.setContentsMargins(0, 0, 0, 0)
         notes_section.setSpacing(4)

@@ -190,12 +190,9 @@ python -m ballontranslator --headless --exec_dirs "[DIR_1],[DIR_2]..."
 如果渲染字体大小不对, 通过 ```--ldpi ``` 指定 Logical DPI 大小, 通常为 96 和 72。
 
 # 自动化模块
-本项目重度依赖 [manga-image-translator](https://github.com/zyddnys/manga-image-translator)，在线服务器和模型训练需要费用，有条件请考虑支持一下
-- Ko-fi: <https://ko-fi.com/voilelabs>
-- Patreon: <https://www.patreon.com/voilelabs>
-- 爱发电: <https://afdian.net/@voilelabs>
+本项目重度依赖 [manga-image-translator](https://github.com/zyddnys/manga-image-translator)。
 
-Sugoi 翻译器作者: [mingshiba](https://www.patreon.com/mingshiba)
+[Sugoi 翻译器](https://sugoitranslator.com/) 作者: mingshiba
   
 ### 文本检测
  * 暂时仅支持日文(方块字都差不多)和英文检测，训练代码和说明见https://github.com/dmMaze/comic-text-detector

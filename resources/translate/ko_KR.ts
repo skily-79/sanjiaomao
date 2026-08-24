@@ -3931,16 +3931,6 @@ All existing translation results will be cleared!</source>
         <translation>글꼴 제외</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="438"/>
-        <source>Sponsor</source>
-        <translation>후원</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="451"/>
-        <source>Afdian</source>
-        <translation>Afdian</translation>
-    </message>
-    <message>
         <source>Run</source>
         <translation type="vanished">실행</translation>
     </message>
@@ -4152,16 +4142,6 @@ All existing translation results will be cleared!</source>
         <location filename="../../ballontranslator/ui/update_dialog.py" line="167"/>
         <source>A new version is available</source>
         <translation>새로운 버전을 사용할 수 있음</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/update_dialog.py" line="213"/>
-        <source>sponsoring this project</source>
-        <translation>이 프로젝트 후원하기</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/update_dialog.py" line="221"/>
-        <source>Consider %1 if it has been helpful to you.</source>
-        <translation>이 프로그램이 도움이 되었다면 %1을(를) 고려해 주세요.</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/update_dialog.py" line="236"/>

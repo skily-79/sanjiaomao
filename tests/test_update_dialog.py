@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from qtpy.QtCore import Qt, QTranslator
+from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QApplication, QFrame, QLabel, QPushButton, QTextBrowser
 
 from ballontranslator.ui.update_dialog import (
@@ -106,33 +106,6 @@ class UpdateReleaseDialogTests(unittest.TestCase):
         self.assertIsNotNone(dialog.findChild(QPushButton, 'UpdateDialogPrimaryButton'))
         self.assertIsNone(dialog.findChild(QPushButton, 'UpdateDialogCancelButton'))
         dialog.close()
-
-    def test_sponsor_link_uses_compiled_chinese_translation(self):
-        release_info = SimpleNamespace(
-            tag_name='v1.5.6',
-            name='v1.5.6',
-            html_url='',
-            body='',
-            published_at='',
-        )
-        result = SimpleNamespace(
-            current_version='1.5.5',
-            latest_version='1.5.6',
-            release_info=release_info,
-        )
-        translator = QTranslator()
-        self.assertTrue(translator.load('zh_CN', 'resources/translate'))
-        self.app.installTranslator(translator)
-        try:
-            dialog = UpdateReleaseDialog(result, display_language='zh_CN')
-            message = dialog.findChild(
-                QLabel, 'UpdateReleaseSponsorMessage'
-            )
-            self.assertIn('>赞助</a>', message.text())
-            dialog.close()
-        finally:
-            self.app.removeTranslator(translator)
-
 
 if __name__ == '__main__':
     unittest.main()

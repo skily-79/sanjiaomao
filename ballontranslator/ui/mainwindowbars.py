@@ -14,10 +14,9 @@ from qtpy.QtWidgets import (
     QToolButton,
     QVBoxLayout,
 )
-from qtpy.QtCore import QEvent, QPoint, QSize, Qt, QUrl, Signal
+from qtpy.QtCore import QEvent, QPoint, QSize, Qt, Signal
 from qtpy.QtGui import (
     QActionGroup,
-    QDesktopServices,
     QIcon,
     QKeySequence,
     QMouseEvent,
@@ -461,33 +460,6 @@ class TitleBar(Widget):
         self.toolsToolBtn.setMenu(toolsMenu)
         self.toolsToolBtn.setPopupMode(QToolButton.InstantPopup)
 
-        self.sponsorToolBtn = TitleBarToolBtn(self)
-        self.sponsorToolBtn.setText(self.tr('Sponsor'))
-        self.sponsorToolBtn.setIcon(QIcon(themed_icon_path('heart.svg')))
-        self.sponsorToolBtn.setIconSize(QSize(16, 16))
-        self.sponsorToolBtn.setToolButtonStyle(
-            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
-        )
-        sponsor_menu = QMenu(self.sponsorToolBtn)
-        self.patreonSponsorAction = QAction('Patreon', self)
-        self.patreonSponsorAction.triggered.connect(
-            lambda _checked=False: QDesktopServices.openUrl(
-                QUrl('https://patreon.com/dreMaze')
-            )
-        )
-        self.afdianSponsorAction = QAction(self.tr('Afdian'), self)
-        self.afdianSponsorAction.triggered.connect(
-            lambda _checked=False: QDesktopServices.openUrl(
-                QUrl('https://afdian.com/a/dmMaze')
-            )
-        )
-        sponsor_menu.addActions([
-            self.patreonSponsorAction,
-            self.afdianSponsorAction,
-        ])
-        self.sponsorToolBtn.setMenu(sponsor_menu)
-        self.sponsorToolBtn.setPopupMode(QToolButton.InstantPopup)
-
         self.iconLabel = QLabel(self)
         if not shared.ON_MACOS:
             self.iconLabel.setFixedWidth(LEFTBAR_WIDTH - 12)
@@ -505,7 +477,6 @@ class TitleBar(Widget):
         hlayout.addWidget(self.viewToolBtn)
         hlayout.addWidget(self.goToolBtn)
         hlayout.addWidget(self.toolsToolBtn)
-        hlayout.addWidget(self.sponsorToolBtn)
         hlayout.addStretch()
         hlayout.addWidget(self.titleLabel)
         hlayout.addStretch()

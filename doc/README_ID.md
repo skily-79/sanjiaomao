@@ -167,12 +167,9 @@ pengenalan kata & menerjemahkan area yang dipilih
 
 
 # Modul otomasi
-Proyek ini sangat bergantung pada [manga-image-translator](https://github.com/zyddnys/manga-image-translator), layanan online dan pelatihan model tidaklah murah, mohon pertimbangkan untuk menyumbangkan proyek ini:  
-- Ko-fi: <https://ko-fi.com/voilelabs>
-- Patreon: <https://www.patreon.com/voilelabs>
-- 爱发电: <https://afdian.net/@voilelabs>  
+Proyek ini sangat bergantung pada [manga-image-translator](https://github.com/zyddnys/manga-image-translator).
 
-Sugoi translator dibuat oleh [mingshiba](https://www.patreon.com/mingshiba).
+[Sugoi translator](https://sugoitranslator.com/) dibuat oleh mingshiba.
   
 ## Deteksi teks
 Deteksi teks bahasa Inggris dan Jepang, kode pelatihan, dan rincian lebih lanjut dapat ditemukan di [comic-text-detector](https://github.com/dmMaze/comic-text-detector)

@@ -160,12 +160,9 @@ curl -fLO https://raw.githubusercontent.com/dmMaze/BallonsTranslator/dev/scripts
 
 
 # Automation modules
-このプロジェクトは[manga-image-translator](https://github.com/zyddnys/manga-image-translator)に大きく依存しており、オンラインサービスやモデルトレーニングは安くないので、プロジェクトの寄付を検討してください:
-- Ko-fi: <https://ko-fi.com/voilelabs>
-- Patreon: <https://www.patreon.com/voilelabs>
-- 爱发电: <https://afdian.net/@voilelabs>
+このプロジェクトは[manga-image-translator](https://github.com/zyddnys/manga-image-translator)に大きく依存しています。
 
-Sugoi translatorは、[mingshiba](https://www.patreon.com/mingshiba)によって作成されています。
+[Sugoi translator](https://sugoitranslator.com/)は、mingshibaによって作成されています。
 
 ## 文字検出
 英語と日本語のテキスト検出をサポートし、学習コードと詳細は[comic-text-detector](https://github.com/dmMaze/comic-text-detector)に掲載されています

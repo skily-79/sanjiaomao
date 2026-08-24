@@ -182,12 +182,9 @@ If the rendered font size is not right, specify logical DPI manually via ```--ld
 
 
 # Automation modules
-This project is heavily dependent upon [manga-image-translator](https://github.com/zyddnys/manga-image-translator), online service and model training is not cheap, please consider to donate the project:  
-- Ko-fi: <https://ko-fi.com/voilelabs>
-- Patreon: <https://www.patreon.com/voilelabs>
-- 爱发电: <https://afdian.net/@voilelabs>  
+This project is heavily dependent upon [manga-image-translator](https://github.com/zyddnys/manga-image-translator).
 
-[Sugoi translator](https://sugoitranslator.com/) is created by [mingshiba](https://www.patreon.com/mingshiba).
+[Sugoi translator](https://sugoitranslator.com/) is created by mingshiba.
   
 ## Text detection
  * Support English and Japanese text detection, training code and more details can be found at [comic-text-detector](https://github.com/dmMaze/comic-text-detector)

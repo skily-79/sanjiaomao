@@ -179,12 +179,9 @@ Nếu kích thước phông chữ được render không đúng, hãy chỉ đ�
 
 
 # Các modules tự động
-Dự án này phụ thuộc rất nhiều vào [manga-image-translator](https://github.com/zyddnys/manga-image-translator), Các dịch vụ trực tuyến và model training không rẻ, nếu được thì donate các dự án nè nha (Xin cám mơn :3):  
-- Ko-fi: <https://ko-fi.com/voilelabs>
-- Patreon: <https://www.patreon.com/voilelabs>
-- 爱发电: <https://afdian.net/@voilelabs>  
+Dự án này phụ thuộc rất nhiều vào [manga-image-translator](https://github.com/zyddnys/manga-image-translator).
 
-[Sugoi translator](https://sugoitranslator.com/) is created by [mingshiba](https://www.patreon.com/mingshiba).
+[Sugoi translator](https://sugoitranslator.com/) is created by mingshiba.
   
 ## Xác định văn bản
 * Hỗ trợ phát hiện văn bản tiếng Anh và tiếng Nhật [comic-text-detector](https://github.com/dmMaze/comic-text-detector)

@@ -180,12 +180,9 @@ python launch.py --headless --exec_dirs "[DIR_1],[DIR_2]..."
 
 
 # Модули автоматизации
-Этот проект сильно зависит от [manga-image-translator](https://github.com/zyddnys/manga-image-translator), онлайн-сервис и обучение моделей недешевы, пожалуйста, рассмотрите возможность пожертвования проекту:  
-- Ko-fi: <https://ko-fi.com/voilelabs>
-- Patreon: <https://www.patreon.com/voilelabs>
-- 爱发电: <https://afdian.net/@voilelabs>  
+Этот проект сильно зависит от [manga-image-translator](https://github.com/zyddnys/manga-image-translator).
 
-[Sugoi translator](https://sugoitranslator.com/) создан [mingshiba](https://www.patreon.com/mingshiba).
+[Sugoi translator](https://sugoitranslator.com/) создан mingshiba.
   
 ## Обнаружение текста
  * Поддерживает обнаружение английского и японского текста, код обучения и подробности можно найти в [comic-text-detector](https://github.com/dmMaze/comic-text-detector)

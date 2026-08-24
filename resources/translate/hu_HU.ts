@@ -4226,16 +4226,6 @@
         <translation>Betűtípus kizárás</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="438"/>
-        <source>Sponsor</source>
-        <translation>Szponzor</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="451"/>
-        <source>Afdian</source>
-        <translation>Afdian</translation>
-    </message>
-    <message>
         <source>Drawing Board </source>
         <translation>Rajztábla</translation>
     </message>
@@ -4464,16 +4454,6 @@
         <location filename="../../ballontranslator/ui/update_dialog.py" line="167"/>
         <source>A new version is available</source>
         <translation>Elérhető új verzió</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/update_dialog.py" line="213"/>
-        <source>sponsoring this project</source>
-        <translation>támogatja ezt a projektet</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/update_dialog.py" line="221"/>
-        <source>Consider %1 if it has been helpful to you.</source>
-        <translation>Fontold meg a %1-et, ha hasznosnak találtad.</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/update_dialog.py" line="236"/>

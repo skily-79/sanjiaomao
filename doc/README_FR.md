@@ -188,12 +188,9 @@ Si la taille de la police rendue n'est pas correcte, spécifiez manuellement la 
 
 
 # Modules d'automatisation
-Ce projet dépend fortement de [manga-image-translator](https://github.com/zyddnys/manga-image-translator), un service en ligne et la formation des modèles n'est pas bon marché, veuillez envisager de faire un don au projet :
-- Ko-fi: <https://ko-fi.com/voilelabs>
-- Patreon: <https://www.patreon.com/voilelabs>
-- 爱发电: <https://afdian.net/@voilelabs>  
+Ce projet dépend fortement de [manga-image-translator](https://github.com/zyddnys/manga-image-translator).
 
-[Sugoi translator](https://sugoitranslator.com/) est créé par [mingshiba](https://www.patreon.com/mingshiba).
+[Sugoi translator](https://sugoitranslator.com/) est créé par mingshiba.
   
 ## Détection de texte
  * Prise en charge de la détection de texte en anglais et en japonais. Le code source et plus de détails sont disponibles sur [comic-text-detector].
