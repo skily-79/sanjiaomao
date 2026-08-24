@@ -1,5 +1,6 @@
 import threading
 import time
+import logging
 from collections import deque
 from typing import Union, List, Callable
 import os.path as osp
@@ -14,6 +15,14 @@ from .packageinstall_thread import PackageInstallThread
 from .package_manager import create_package_manager
 from .torch_install_dialog import confirm_torch_install_device
 from ballontranslator.utils.logger import logger as LOGGER
+from ballontranslator.utils.log_context import (
+    failure_message_for_page,
+    format_stage_timings,
+    log_event,
+    module_failure_hint,
+    pipeline_stage_list,
+    summarize_pipeline_modules,
+)
 from ballontranslator.utils.registry import LazyModuleError, Registry
 from ballontranslator.utils.imgproc_utils import enlarge_window, get_block_mask
 from ballontranslator.utils.io_utils import text_is_empty
@@ -63,15 +72,22 @@ def _create_page_error_dialog(
     exception_type: str,
     page_key: str = None,
     page_label: str = 'Page',
+    *,
+    stage: str = '',
+    module_key: str = '',
+    module_name: str = '',
 ):
-
-    if page_key:
-        error_msg = f'{error_msg}\n{page_label}: {page_key}'
 
     create_error_dialog(
         exception,
-        error_msg,
+        failure_message_for_page(error_msg, page_key or '', page_label),
         exception_type,
+        stage=stage,
+        page=page_key or '',
+        module_key=module_key,
+        module_name=module_name,
+        hint=module_failure_hint(module_key) if module_key else '',
+        log_message=error_msg,
     )
 
 
@@ -84,7 +100,15 @@ def _show_llm_key_required_dialog(error: LLMApiKeyRequiredError):
     if not shared.HEADLESS:
         shared.show_llm_key_dialog_in_mainthread(error.profile_id, error.profile_name)
     else:
-        LOGGER.error(str(error))
+        log_event(
+            LOGGER,
+            logging.ERROR,
+            'LLM_KEY_REQUIRED',
+            str(error),
+            stage='translate',
+            module_key='translator',
+            module_name=error.profile_name or '',
+        )
 
 
 def _show_llm_model_required_dialog(error: LLMModelRequiredError):
@@ -96,7 +120,15 @@ def _show_llm_model_required_dialog(error: LLMModelRequiredError):
     if not shared.HEADLESS:
         shared.show_llm_model_dialog_in_mainthread(error.profile_id, error.profile_name, error.target)
     else:
-        LOGGER.error(str(error))
+        log_event(
+            LOGGER,
+            logging.ERROR,
+            'LLM_MODEL_REQUIRED',
+            str(error),
+            stage='translate',
+            module_key='translator',
+            module_name=error.profile_name or '',
+        )
 
 
 def _show_llm_base_url_required_dialog(error: LLMBaseURLRequiredError):
@@ -108,7 +140,15 @@ def _show_llm_base_url_required_dialog(error: LLMBaseURLRequiredError):
     if not shared.HEADLESS:
         shared.show_llm_base_url_dialog_in_mainthread(error.profile_id, error.profile_name, error.target)
     else:
-        LOGGER.error(str(error))
+        log_event(
+            LOGGER,
+            logging.ERROR,
+            'LLM_BASE_URL_REQUIRED',
+            str(error),
+            stage='translate',
+            module_key='translator',
+            module_name=error.profile_name or '',
+        )
 
 
 def _reset_llm_key_required_dialogs():
@@ -170,7 +210,10 @@ class ModuleThread(QThread):
             raise KeyError(f'Unknown {self.module_key} module: {module_name}')
         self._emit_prepare_progress({'event': 'checking_dependencies', 'message': self.tr('Checking dependencies')})
         if not ensure_module_files(spec, progress_callback=self._emit_prepare_progress, cancel_event=self.cancel_event):
-            raise RuntimeError(f'Failed to prepare files for {self.module_key} module: {module_name}')
+            raise RuntimeError(
+                f'Failed to prepare files for {self.module_key} module "{module_name}". '
+                f'See logs/ for download or file verification details.'
+            )
         if self.cancel_event.is_set():
             raise DownloadCancelled('Module preparation cancelled by user.')
         self._emit_prepare_progress({'event': 'importing', 'message': self.tr('Importing module')})
@@ -361,7 +404,15 @@ class ModuleThread(QThread):
         except LLMRequestStopped:
             LOGGER.info(f'{self.module_key} task stopped by user.')
         except Exception as e:
-            create_error_dialog(e, self.tr('Module task failed.'), f'ModuleThreadFailed:{self.module_key}')
+            create_error_dialog(
+                e,
+                self.tr('Module task failed.'),
+                f'ModuleThreadFailed:{self.module_key}',
+                stage='module_run',
+                module_key=self.module_key,
+                module_name=getattr(self.module, 'name', ''),
+                hint=module_failure_hint(self.module_key),
+            )
         finally:
             self.job = None
 
@@ -423,7 +474,16 @@ class InpaintThread(ModuleThread):
             self.inpainting = False
             self.inpaint_failed.emit()
         except Exception as e:
-            create_error_dialog(e, self.tr('Inpainting Failed.'), 'InpaintFailed')
+            create_error_dialog(
+                e,
+                self.tr('Inpainting Failed.'),
+                'InpaintFailed',
+                stage='inpaint',
+                page=img_key or '',
+                module_key='inpainter',
+                module_name=getattr(self.inpainter, 'name', cfg_module.inpainter),
+                hint=module_failure_hint('inpainter'),
+            )
             self.inpainting = False
             self.inpaint_failed.emit()
         self.inpainting = False
@@ -595,14 +655,14 @@ class TranslateThread(ModuleThread):
         project: ProjImgTrans,
         page_key: str,
     ):
-        page = project.pages[page_key]
-        # A failed or partially completed full-page request must never leave the
-        # old page eligible as history.
-        project.begin_full_page_translation(page_key)
         success = True
-        if hasattr(self.translator, 'set_stop_event'):
-            self.translator.set_stop_event(self.pipeline_stop_event)
         try:
+            page = project.pages[page_key]
+            # A failed or partially completed full-page request must never leave the
+            # old page eligible as history.
+            project.begin_full_page_translation(page_key)
+            if hasattr(self.translator, 'set_stop_event'):
+                self.translator.set_stop_event(self.pipeline_stop_event)
             self.translator.translate_textblk_lst(
                 page,
                 project=project,
@@ -629,12 +689,21 @@ class TranslateThread(ModuleThread):
             LOGGER.info('Translation stopped by user.')
         except Exception as e:
             success = False
+            error_msg = self.tr('Translation Failed.')
+            if isinstance(e, MissingTranslatorParams):
+                error_msg = error_msg + '\n' + self.tr('{param} is required for {translator}').format(
+                    param=str(e),
+                    translator=self.translator.name,
+                )
             _create_page_error_dialog(
                 e,
-                self.tr('Translation Failed.'),
+                error_msg,
                 'TranslationFailed',
                 page_key,
                 self.tr('Page'),
+                stage='translate',
+                module_key='translator',
+                module_name=getattr(self.translator, 'name', cfg_module.translator),
             )
         if success:
             project.mark_translation_finished(page_key, self.translator.lang_target)
@@ -691,35 +760,22 @@ class TranslateThread(ModuleThread):
             started_at = time.perf_counter()
             self.blockSignals(True)
             try:
-                self._translate_page(self.imgtrans_proj, page_key)
-            except Exception as e:
-                # TODO: allowing retry/skip/terminate
-                msg = _failure_message_for_page(
-                    self.tr('Translation Failed.'),
-                    page_key,
-                    self.tr('Page'),
-                )
-                if isinstance(e, MissingTranslatorParams):
-                    msg = msg + '\n' + self.tr('{param} is required for {translator}').format(
-                        param=str(e),
-                        translator=self.translator.name,
-                    )
-                    
+                translate_ok = self._translate_page(self.imgtrans_proj, page_key)
+            finally:
                 self.blockSignals(False)
-                create_error_dialog(e, msg, 'TranslationFailed')
-                # self.imgtrans_proj = None
-                # self.finished_counter = 0
-                # self.pipeline_pagekey_queue = []
-                # return
-            self.blockSignals(False)
             self.finished_counter += 1
             self.progress_changed.emit(self.finished_counter)
-            LOGGER.debug(
-                'Translation page finished: page=%s elapsed=%.3fs progress=%d/%d',
-                page_key,
-                time.perf_counter() - started_at,
-                self.finished_counter,
-                self.num_process_pages,
+            elapsed = time.perf_counter() - started_at
+            log_event(
+                LOGGER,
+                logging.INFO if translate_ok else logging.WARNING,
+                'PIPELINE_TRANSLATE_DONE',
+                (
+                    f'success={translate_ok} translate={elapsed:.2f}s '
+                    f'progress={self.finished_counter}/{self.num_process_pages}'
+                ),
+                stage='pipeline',
+                page=page_key,
             )
 
             if not self.pipeline_finished() and delay > 0:
@@ -822,6 +878,8 @@ class ImgtransThread(QThread):
         error_msg: str,
         exception_type: str,
         page_key: str = None,
+        *,
+        stage: str = '',
     ):
         _create_page_error_dialog(
             exception,
@@ -829,6 +887,9 @@ class ImgtransThread(QThread):
             exception_type,
             page_key,
             self.tr('Page'),
+            stage=stage,
+            module_key=getattr(exception, 'module_key', ''),
+            module_name=getattr(exception, 'module_name', ''),
         )
         self.requestStop()
 
@@ -865,6 +926,9 @@ class ImgtransThread(QThread):
                 'TranslationFailed',
                 page_key,
                 self.tr('Page'),
+                stage='translate',
+                module_key='translator',
+                module_name=cfg_module.translator,
             )
             return False
         if hasattr(translator, 'set_stop_event'):
@@ -889,12 +953,21 @@ class ImgtransThread(QThread):
         except LLMRequestStopped:
             LOGGER.info('Translation stopped by user.')
         except Exception as e:
+            error_msg = self.tr('Translation Failed.')
+            if isinstance(e, MissingTranslatorParams):
+                error_msg = error_msg + '\n' + self.tr('{param} is required for {translator}').format(
+                    param=str(e),
+                    translator=translator.name,
+                )
             _create_page_error_dialog(
                 e,
-                self.tr('Translation Failed.'),
+                error_msg,
                 'TranslationFailed',
                 page_key,
                 self.tr('Page'),
+                stage='translate',
+                module_key='translator',
+                module_name=getattr(translator, 'name', cfg_module.translator),
             )
         return False
 
@@ -965,6 +1038,9 @@ class ImgtransThread(QThread):
                     'OCRFailed',
                     page_key,
                     self.tr('Page'),
+                    stage='ocr',
+                    module_key=getattr(e, 'module_key', 'ocr'),
+                    module_name=getattr(e, 'module_name', ''),
                 )
                 self.finish_blktrans.emit(mode, blk_ids)
                 return
@@ -1056,6 +1132,7 @@ class ImgtransThread(QThread):
         self.ocr_counter = 0
         self.translate_counter = 0
         self.inpaint_counter = 0
+        pipeline_started_at = time.perf_counter()
         
         # 如果指定了pages_to_process，只处理这些页面
         all_pages = list(self.imgtrans_proj.pages.keys())
@@ -1074,6 +1151,16 @@ class ImgtransThread(QThread):
             for i in range(num_pages):
                 self.process_idx_to_page_idx[i] = i
             LOGGER.info(f'Processing all {num_pages} pages')
+        log_event(
+            LOGGER,
+            logging.INFO,
+            'PIPELINE_START',
+            (
+                f'pages={num_pages} stages={pipeline_stage_list(cfg_module.enable_detect, cfg_module.enable_ocr, cfg_module.enable_translate, cfg_module.enable_inpaint)} '
+                f'modules={summarize_pipeline_modules(cfg_module.textdetector, cfg_module.ocr, cfg_module.translator, cfg_module.inpainter)}'
+            ),
+            stage='pipeline',
+        )
         self.textdetect_thread.num_process_pages = self.num_pages
         self.ocr_thread.num_process_pages = self.num_pages
         self.inpaint_thread.num_process_pages = self.num_pages
@@ -1088,14 +1175,24 @@ class ImgtransThread(QThread):
         if self.parallel_trans and cfg_module.enable_translate:
             self.translate_thread.runTranslatePipeline(self.imgtrans_proj, self.stop_event)
 
-        for imgname in pages_to_iterate:
+        for page_index, imgname in enumerate(pages_to_iterate, start=1):
             
             # 检查是否请求停止
             if self.isStopRequested():
                 LOGGER.info('Image translation pipeline stopped by user')
                 break
+
+            log_event(
+                LOGGER,
+                logging.INFO,
+                'PIPELINE_PAGE',
+                f'processing {page_index}/{num_pages}',
+                stage='pipeline',
+                page=imgname,
+            )
                 
             page_started_at = time.perf_counter()
+            page_success = True
             stage_times = {}
             stage_started_at = page_started_at
             img = self.imgtrans_proj.read_img(imgname)
@@ -1117,6 +1214,7 @@ class ImgtransThread(QThread):
                         self.tr('Text Detection Failed.'),
                         'TextDetectFailed',
                         imgname,
+                        stage='detect',
                     )
                     break
                 self.detect_counter += 1
@@ -1203,6 +1301,7 @@ class ImgtransThread(QThread):
                         self.tr('OCR Failed.'),
                         'OCRFailed',
                         imgname,
+                        stage='ocr',
                     )
                     break
                 self.imgtrans_proj.update_page_progress(imgname, RunStatus.FIN_OCR)
@@ -1222,11 +1321,12 @@ class ImgtransThread(QThread):
                         self.requestStop()
                         break
                 elif not low_vram_trans:
-                    self._translate_full_page(
+                    if not self._translate_full_page(
                         self.imgtrans_proj,
                         imgname,
                         blk_list,
-                    )
+                    ):
+                        page_success = False
                     self.translate_counter += 1
                     self.update_translate_progress.emit(self.translate_counter)
                 if not self.parallel_trans and not low_vram_trans:
@@ -1266,7 +1366,17 @@ class ImgtransThread(QThread):
                         self.requestStop()
                         break
                     except Exception as e:
-                        create_error_dialog(e, self.tr('Inpainting Failed.'), 'InpaintFailed')
+                        page_success = False
+                        _create_page_error_dialog(
+                            e,
+                            self.tr('Inpainting Failed.'),
+                            'InpaintFailed',
+                            imgname,
+                            self.tr('Page'),
+                            stage='inpaint',
+                            module_key='inpainter',
+                            module_name=getattr(self.inpainter, 'name', cfg_module.inpainter),
+                        )
                     
                 self.inpaint_counter += 1
                 self.imgtrans_proj.update_page_progress(imgname, RunStatus.FIN_INPAINT)
@@ -1276,27 +1386,38 @@ class ImgtransThread(QThread):
                 if len(blk_removed) > 0:
                     self.imgtrans_proj.load_mask_by_imgname
 
-            LOGGER.debug(
-                'Pipeline page stages: page=%s total=%.3fs %s',
-                imgname,
-                time.perf_counter() - page_started_at,
-                ', '.join(
-                    f'{name}={value:.3f}s' if isinstance(value, float) else f'{name}={value}'
-                    for name, value in stage_times.items()
+            log_event(
+                LOGGER,
+                logging.INFO if page_success else logging.WARNING,
+                'PIPELINE_PAGE_DONE',
+                (
+                    f'success={page_success} total={time.perf_counter() - page_started_at:.2f}s '
+                    f'{format_stage_timings(stage_times)}'
                 ),
+                stage='pipeline',
+                page=imgname,
             )
         
         if cfg_module.enable_translate and low_vram_trans and not self.isStopRequested():
             unload_modules(self, ['textdetector', 'inpainter', 'ocr'])
-            for imgname in pages_to_iterate:
+            for page_index, imgname in enumerate(pages_to_iterate, start=1):
                 # 检查是否请求停止
                 if self.isStopRequested():
                     LOGGER.info('Translation stopped by user')
                     break
+
+                log_event(
+                    LOGGER,
+                    logging.INFO,
+                    'PIPELINE_PAGE',
+                    f'processing {page_index}/{num_pages} mode=low_vram translate',
+                    stage='pipeline',
+                    page=imgname,
+                )
                     
                 page_started_at = time.perf_counter()
                 blk_list = self.imgtrans_proj.pages[imgname]
-                self._translate_full_page(
+                translate_ok = self._translate_full_page(
                     self.imgtrans_proj,
                     imgname,
                     blk_list,
@@ -1304,13 +1425,45 @@ class ImgtransThread(QThread):
                 self.translate_counter += 1
                 self.update_translate_progress.emit(self.translate_counter)
                 elapsed = time.perf_counter() - page_started_at
-                LOGGER.debug(
-                    'Pipeline page stages: page=%s total=%.3fs translate=%.3fs mode=low_vram',
-                    imgname,
-                    elapsed,
-                    elapsed,
+                log_event(
+                    LOGGER,
+                    logging.INFO if translate_ok else logging.WARNING,
+                    'PIPELINE_PAGE_DONE',
+                    (
+                        f'success={translate_ok} total={elapsed:.2f}s '
+                        f'translate={elapsed:.2f}s mode=low_vram'
+                    ),
+                    stage='pipeline',
+                    page=imgname,
                 )
 
+        if cfg_module.enable_translate and self.parallel_trans and not self.isStopRequested():
+            while (
+                self.translate_thread.finished_counter < num_pages
+                and self.translate_thread.isRunning()
+            ):
+                if self.isStopRequested():
+                    break
+                time.sleep(0.05)
+            self.translate_counter = self.translate_thread.finished_counter
+
+        translate_done = (
+            self.translate_thread.finished_counter
+            if cfg_module.enable_translate and self.parallel_trans
+            else self.translate_counter
+        )
+        log_event(
+            LOGGER,
+            logging.INFO,
+            'PIPELINE_END',
+            (
+                f'pages={num_pages} stopped={self.isStopRequested()} '
+                f'elapsed={time.perf_counter() - pipeline_started_at:.2f}s '
+                f'detect={self.detect_counter}/{num_pages} ocr={self.ocr_counter}/{num_pages} '
+                f'translate={translate_done}/{num_pages} inpaint={self.inpaint_counter}/{num_pages}'
+            ),
+            stage='pipeline',
+        )
         self._emit_pipeline_stopped_if_ready(imgtrans_running=False)
 
     def detect_finished(self) -> bool:
@@ -1352,7 +1505,12 @@ class ImgtransThread(QThread):
             LOGGER.info('Image translation task stopped by user.')
             self._emit_pipeline_stopped_if_ready(imgtrans_running=False)
         except Exception as e:
-            create_error_dialog(e, self.tr('Image translation failed.'), 'ImageTranslationFailed')
+            create_error_dialog(
+                e,
+                self.tr('Image translation failed.'),
+                'ImageTranslationFailed',
+                stage='pipeline',
+            )
         finally:
             self.job = None
 
@@ -1758,6 +1916,8 @@ class ModuleManager(QObject):
                 self.package_install_thread.last_error,
                 self.tr('Failed to install packages'),
                 'InstallPackages:batch',
+                stage='module_prepare',
+                hint='Check network access and retry module preparation.',
             )
         if on_failure is not None:
             on_failure()
@@ -1985,7 +2145,15 @@ class ModuleManager(QObject):
         if thread.last_error is None:
             return
         msg = self.tr('Failed to set module ') + thread.last_set_module_name
-        create_error_dialog(thread.last_error, msg, f'FailedSetModule:{thread.module_key}:{thread.last_set_module_name}')
+        create_error_dialog(
+            thread.last_error,
+            msg,
+            f'FailedSetModule:{thread.module_key}:{thread.last_set_module_name}',
+            stage='module_prepare',
+            module_key=thread.module_key,
+            module_name=thread.last_set_module_name,
+            hint=module_failure_hint(thread.module_key),
+        )
 
     def unload_all_models(self):
         unload_modules(self, ('textdetector', 'inpainter', 'ocr', 'translator'))

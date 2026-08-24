@@ -58,6 +58,7 @@ class ColoredFormatter(logging.Formatter):
 
     def format(self, record):
         levelname = record.levelname
+        asctime_str = datetime.datetime.fromtimestamp(record.created).strftime('%Y-%m-%d %H:%M:%S')
         if self.use_color and levelname in COLORS:
 
             def colored(text):
@@ -67,19 +68,23 @@ class ColoredFormatter(logging.Formatter):
                     attrs={"bold": True},
                 )
 
+            record.asctime2 = _colored(asctime_str, color="green")
             record.levelname2 = colored("{:<7}".format(record.levelname))
             record.message2 = colored(record.getMessage())
-
-            asctime2 = datetime.datetime.fromtimestamp(record.created)
-            record.asctime2 = _colored(asctime2, color="green")
-
             record.module2 = _colored(record.module, color="cyan")
             record.funcName2 = _colored(record.funcName, color="cyan")
             record.lineno2 = _colored(record.lineno, color="cyan")
+        else:
+            record.asctime2 = asctime_str
+            record.levelname2 = "{:<7}".format(record.levelname)
+            record.message2 = record.getMessage()
+            record.module2 = record.module
+            record.funcName2 = record.funcName
+            record.lineno2 = record.lineno
         return logging.Formatter.format(self, record)
 
 FORMAT = (
-    "[%(levelname2)s] %(module2)s:%(funcName2)s:%(lineno2)s - %(message2)s"
+    "[%(asctime2)s] [%(levelname2)s] %(module2)s:%(funcName2)s:%(lineno2)s - %(message2)s"
 )
 
 class ColoredLogger(logging.Logger):
@@ -117,12 +122,14 @@ def setup_logging(logfile_dir: str, max_num_logs=14):
     fh = logging.FileHandler(logfilep, mode='w', encoding='utf-8')
     fh.setFormatter(
         logging.Formatter(
-            ("[%(levelname)s] %(module)s:%(funcName)s:%(lineno)s - %(message)s")
+            ("[%(asctime)s] [%(levelname)s] %(module)s:%(funcName)s:%(lineno)s - %(message)s"),
+            datefmt='%Y-%m-%d %H:%M:%S',
         )
     )
     fh.setLevel(logging.DEBUG)
     logger.addHandler(fh)
     _enable_faulthandler(fh, logfilep)
+    logger.info('Log file: %s', logfilep)
 
 
 def _enable_faulthandler(file_handler: logging.FileHandler, logfile_path: str):

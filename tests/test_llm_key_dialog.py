@@ -43,6 +43,10 @@ class FakeTranslateThread:
 
     def push_pagekey_queue(self, page_key):
         self.queued_page_keys.append(page_key)
+        return True
+
+    def wake_pipeline_queue(self):
+        pass
 
 
 class MissingKeyTranslator:
@@ -214,6 +218,8 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
 
     def test_page_failure_message_is_logged_and_shown(self):
         with mock.patch(
+            'ballontranslator.utils.message.LOGGER.log',
+        ) as log_event, mock.patch(
             'ballontranslator.utils.message.LOGGER.error',
         ) as log_error, mock.patch.object(
             shared,
@@ -227,10 +233,10 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
             )
 
         logged = '\n'.join(
-            str(call.args[0])
-            for call in log_error.call_args_list
+            ' '.join(str(arg) for arg in call.args)
+            for call in log_event.call_args_list + log_error.call_args_list
         )
-        self.assertIn('Page: page-1', logged)
+        self.assertIn('page=page-1', logged)
         self.assertIn('Page: page-1', show_error.call_args.args[0])
 
     def test_missing_llm_model_dialog_emits_once_until_reset(self):

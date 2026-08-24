@@ -1,10 +1,12 @@
 from typing import List
+import logging
 import os.path as osp
 import os
 
 from .base import LOGGER
 import ballontranslator.utils.shared as shared
 from ballontranslator.utils.download_util import DownloadCancelled, download_and_check_files
+from ballontranslator.utils.log_context import log_event, module_failure_hint
 from ballontranslator.utils.py_package_manager import MissingRequirement, PyPackageManager
 from ballontranslator.utils.registry import ModuleSpec
 from .package_import_names import PACKAGE_IMPORT_NAMES
@@ -104,7 +106,18 @@ def ensure_module_files(module_spec_or_class, progress_callback=None, cancel_eve
             cancel_event=cancel_event,
         )
         if not all_successful:
-            LOGGER.error(f'Please save these files manually to sepcified path and retry, otherwise {spec.key} will be unavailable.')
+            log_event(
+                LOGGER,
+                logging.ERROR,
+                'MODULE_FILES_MISSING',
+                (
+                    f'Module "{spec.key}" is unavailable until required files are present. '
+                    f'{module_failure_hint(spec.module_type or "")}'
+                ),
+                module_key=spec.module_type or '',
+                module_name=spec.key,
+                stage='module_prepare',
+            )
             return False
 
     if shared.CACHE_UPDATED:

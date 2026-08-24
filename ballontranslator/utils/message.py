@@ -2,10 +2,22 @@ import traceback
 from typing import Callable, List, Dict
 
 from . import shared
+from .log_context import log_failure
 from .logger import logger as LOGGER
 
 
-def create_error_dialog(exception: Exception, error_msg: str = None, exception_type: str = None) -> None:
+def create_error_dialog(
+    exception: Exception,
+    error_msg: str = None,
+    exception_type: str = None,
+    *,
+    stage: str = '',
+    page: str = '',
+    module_key: str = '',
+    module_name: str = '',
+    hint: str = '',
+    log_message: str = None,
+) -> None:
     '''
         Popup a error dialog in main thread
     Args:
@@ -23,18 +35,32 @@ def create_error_dialog(exception: Exception, error_msg: str = None, exception_t
         exception_type = ''
 
     exception_type_empty = exception_type == ''
-    show_exception = exception_type_empty or exception_type not in shared.showed_exception
+    show_dialog = exception_type_empty or exception_type not in shared.showed_exception
 
-    if show_exception:
-        if error_msg is None:
-            error_msg = str(exception)
-        else:
-            error_msg = str(exception) + '\n' + error_msg
-        LOGGER.error(error_msg + '\n')
-        LOGGER.error(detail_traceback)
+    if error_msg is None:
+        dialog_msg = str(exception)
+    else:
+        dialog_msg = str(exception) + '\n' + error_msg
 
-        if not shared.HEADLESS:
-            shared.create_errdialog_in_mainthread(error_msg, detail_traceback, exception_type)
+    # Always write structured failure logs; dialog dedup only suppresses popups.
+    resolved_hint = hint
+    if not resolved_hint and (stage or module_key):
+        resolved_hint = 'See logs/ for the full session log file.'
+    log_failure(
+        LOGGER,
+        log_message or error_msg or exception.__class__.__name__,
+        exception,
+        stage=stage,
+        page=page,
+        module_key=module_key,
+        module_name=module_name,
+        hint=resolved_hint,
+    )
+    if dialog_msg != str(exception):
+        LOGGER.error('User message: %s', dialog_msg)
+
+    if show_dialog and not shared.HEADLESS:
+        shared.create_errdialog_in_mainthread(dialog_msg, detail_traceback, exception_type)
 
 
 def create_info_dialog(info_msg, btn_type=None, modal: bool = False, frame_less: bool = False, signal_slot_map_list: List[Dict] = None):

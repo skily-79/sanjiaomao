@@ -2,6 +2,7 @@ import math
 import os
 import errno
 import traceback
+import logging
 import re
 import shutil
 import os.path as osp
@@ -18,6 +19,7 @@ from tqdm import tqdm
 from py7zr import pack_7zarchive, unpack_7zarchive
 
 from . import shared
+from .log_context import download_failure_hint, log_event, log_failure
 from .logger import logger as LOGGER
 from .network_mirrors import rewrite_huggingface_url
 
@@ -293,6 +295,8 @@ def check_local_file(local_file: str, sha256_precal: str = None, cache_hash: boo
 
     if file_exists and sha256_precal is not None and shared.check_local_file_hash:
         sha256_precal = sha256_precal.lower()
+        if shared.cache_data is None:
+            shared.load_cache()
         if cache_hash and local_file in shared.cache_data and shared.cache_data[local_file].lower() == sha256_precal:
             pass
         else:
@@ -377,13 +381,30 @@ def try_download_files(url: str,
                 raise Exception(f'Mismatch between newly downloaded {savep} and pre-calculated hash: "{sha256_calculated}" <-> "{sha256_precal.lower()}"')
 
         except DownloadCancelled:
-            LOGGER.info(f'Download cancelled while downloading {file} from {download_url}')
+            log_event(
+                LOGGER,
+                logging.INFO,
+                'DOWNLOAD_CANCELLED',
+                f'Cancelled while downloading {file}',
+                stage='download',
+            )
             raise
-        except Exception:
-            err_msg = traceback.format_exc()
+        except Exception as e:
             all_successful = False
-            LOGGER.error(err_msg)
-            LOGGER.error(f'Failed downloading {file} from {download_url}, please manually save it to {savep}')
+            log_failure(
+                LOGGER,
+                f'Failed to download model file {file}',
+                e,
+                stage='download',
+                hint=download_failure_hint(savep),
+            )
+            log_event(
+                LOGGER,
+                logging.ERROR,
+                'DOWNLOAD_FAILED',
+                f'url={download_url} save_path={savep}',
+                stage='download',
+            )
     
     return all_successful
 
@@ -515,10 +536,25 @@ def download_and_check_files(url: str,
                     os.remove(tmp_savep)
             file_exists, valid_hash, sha256_calculated = check_local_file(savep, sha256_precal, cache_hash=True)
             if not file_exists:
-                LOGGER.error(f'The unarchived file {savep} doesnt exists.')
+                log_event(
+                    LOGGER,
+                    logging.ERROR,
+                    'ARCHIVE_EXTRACT_FAILED',
+                    f'Extracted file missing: {savep}',
+                    stage='download',
+                )
                 all_valid = False
             elif not valid_hash:
-                LOGGER.error(f'Mismatch between the unarchived {savep} and pre-calculated hash: "{sha256_calculated}" <-> "{sha256_precal.lower()}"')
+                log_event(
+                    LOGGER,
+                    logging.ERROR,
+                    'ARCHIVE_HASH_MISMATCH',
+                    (
+                        f'Extracted file hash mismatch for {savep}: '
+                        f'got {sha256_calculated}, expected {sha256_precal.lower()}'
+                    ),
+                    stage='download',
+                )
                 all_valid = False
     except DownloadCancelled:
         raise
