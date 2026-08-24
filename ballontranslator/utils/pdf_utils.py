@@ -78,20 +78,38 @@ def is_pdf_path(path: str) -> bool:
     return isinstance(path, str) and osp.splitext(path)[1].lower() in PDF_EXT
 
 
+def is_translated_pdf_output(name: str) -> bool:
+    """Return whether *name* is a PDF exported by :func:`export_translated_pdf`.
+
+    Export uses ``{stem}_translated.pdf`` next to the source file. Batch scans skip
+    these so re-opening a parent folder never re-queues finished work.
+
+    >>> is_translated_pdf_output('comic_translated.pdf'), is_translated_pdf_output('comic.pdf')
+    (True, False)
+    """
+    if not is_pdf_path(name):
+        return False
+    stem = osp.splitext(osp.basename(name))[0]
+    return bool(stem) and stem.endswith('_translated')
+
+
 def find_pdf_files(path: str, recursive: bool = False, exclude_dirs=None) -> List[str]:
     """Return the PDF files under *path*, or the single file when *path* is a PDF.
 
     Directories are scanned non-recursively by default so a folder of PDFs behaves
     like a folder of images: each PDF becomes one pipeline queue item. With
     ``recursive`` the scan descends into subdirectories, skipping generated
-    ``*_translate`` working dirs so re-scanning a parent never re-imports output.
-    Callers may pass ``exclude_dirs`` to also skip user-configured directory names.
+    ``*_translate`` working dirs and ``*_translated.pdf`` exports so re-scanning a
+    parent never re-imports output. Callers may pass ``exclude_dirs`` to also skip
+    user-configured directory names.
 
     >>> find_pdf_files('/nonexistent/dir')
     []
     """
     if isinstance(path, str) and osp.isfile(path):
-        return [path] if is_pdf_path(path) else []
+        if is_pdf_path(path) and not is_translated_pdf_output(path):
+            return [path]
+        return []
     if not isinstance(path, str) or not osp.isdir(path):
         return []
 
@@ -99,7 +117,7 @@ def find_pdf_files(path: str, recursive: bool = False, exclude_dirs=None) -> Lis
         return [
             osp.join(path, name)
             for name in sorted(os.listdir(path))
-            if is_pdf_path(name)
+            if is_pdf_path(name) and not is_translated_pdf_output(name)
         ]
 
     if exclude_dirs is None:
@@ -114,7 +132,7 @@ def find_pdf_files(path: str, recursive: bool = False, exclude_dirs=None) -> Lis
             if d not in exclude_dirs and not d.endswith('_translate')
         )
         for name in sorted(files):
-            if is_pdf_path(name):
+            if is_pdf_path(name) and not is_translated_pdf_output(name):
                 pdfs.append(osp.join(root, name))
     return pdfs
 
