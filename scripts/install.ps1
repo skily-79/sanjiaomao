@@ -19,10 +19,10 @@ if (-not $IsLocal) {
     # Web Run (one-liner): Install from scratch in the current directory
     $CurrentDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath(".")
     $ProjectRoot = Join-Path $CurrentDir $AppName
-    Write-Host "=== BallonsTranslator Web Installer ==="
-    Write-Host "Installing fresh version of $AppName to $ProjectRoot..."
+    Write-Host "=== Web Installer ==="
+    Write-Host "Installing fresh copy of the application to $ProjectRoot..."
 } else {
-    Write-Host "=== BallonsTranslator Local Installer ==="
+    Write-Host "=== Local Installer ==="
     Write-Host "Setting up local environment in $ProjectRoot..."
 }
 
@@ -46,7 +46,7 @@ if (-not $IsLocal) {
     # Download source code
     $SourceUrl = "https://github.com/dmMaze/BallonsTranslator/archive/refs/heads/dev.zip"
     $SourceZip = Join-Path $BuildDir "source.zip"
-    Write-Host "Downloading BallonsTranslator source code..."
+    Write-Host "Downloading application source code..."
     Invoke-WebRequest -Uri $SourceUrl -OutFile $SourceZip
 
     Write-Host "Extracting source code..."
@@ -142,11 +142,11 @@ Remove-Item -Recurse -Force $UvTempDir
 Remove-Item -Recurse -Force $BuildDir
 
 Write-Host "=== Installation Completed Successfully! ==="
-Write-Host "You can now run launch_win.bat to start BallonsTranslator."
+Write-Host "You can now run launch_win.bat to start the application."
 
 # Step 5: Automatically launch launch_win.bat
 $LaunchBat = Join-Path $ProjectRoot "launch_win.bat"
 if (Test-Path $LaunchBat) {
-    Write-Host "Launching BallonsTranslator..."
+    Write-Host "Launching application..."
     Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"$LaunchBat`"" -WorkingDirectory $ProjectRoot
 }

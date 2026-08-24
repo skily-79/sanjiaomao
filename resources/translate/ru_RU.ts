@@ -994,7 +994,7 @@
     </message>
     <message>
         <location filename="../../ballontranslator/ui/mainwindow.py" line="611" />
-        <source>Update installed. Restart BallonsTranslator to use the new version.</source>
+        <source>Update installed. Restart the application to use the new version.</source>
         <translation>Обновление установлено. Перезапустите BalloonsTranslator для применения изменений.</translation>
     </message>
     <message>

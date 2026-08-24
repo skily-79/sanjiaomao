@@ -1,4 +1,6 @@
-# Add Your Language to BallonsTranslator (Windows)
+# Add Your Language (Windows)
+
+This project is based on [BallonsTranslator](https://github.com/dmMaze/BallonsTranslator).
 
 You do not need to be a programmer. The app uses
 [Qt Linguist](https://doc.qt.io/qtforpython-6/tools/pyside-linguist.html), a
@@ -6,9 +8,8 @@ visual tool where you read an English phrase and type its translation.
 
 ## 1. Prepare the translation tools
 
-This guide assumes you are using the extracted
-[`Ballonstranslator_win_minium.zip`](https://github.com/dmMaze/BallonsTranslator/releases/download/v1.5.10/Ballonstranslator_win_minium.zip)
-package and its bundled Python environment is ready.
+This guide assumes you are using a Windows package with the bundled
+`ballontrans_pylibs_win` Python environment.
 
 Open the package's main folder, right-click an empty area, and choose **Open in
 Terminal**. In PowerShell, install the Qt translation tools once:
@@ -57,15 +58,14 @@ language's native name:
 Without this line, the language still works but appears as its code, such as
 `de_DE`.
 
-## 3. Check and submit it
+## 3. Check your changes
 
 Start the app with `launch_win.bat`. Choose your language under **View > Display
 Language**, close the app, and open it again. Check the main window, Settings,
 Run dialog, and module settings for clipped text, incorrect wording, or English
 phrases that you missed.
 
-Submit these changes in a pull request to the `dev` branch (or send them to a
-maintainer):
+Keep these files in your local changes:
 
 - `resources\translate\de_DE.ts`
 - `resources\translate\de_DE.qm`

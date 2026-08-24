@@ -648,7 +648,14 @@ class MainWindow(mainwindow_cls):
                     self.tr('Already up-to-date.') + f'\n{result.current_version}'
                 )
             else:
-                LOGGER.info(f'BallonsTranslator is already up-to-date: {result.current_version}')
+                LOGGER.info(f'Application is already up-to-date: {result.current_version}')
+            return
+
+        if result.status == 'disabled':
+            if self._manual_update_check:
+                create_info_dialog(self.tr('Remote updates are disabled in this build.'))
+            else:
+                LOGGER.info('Skipped remote update check because remote updates are disabled.')
             return
 
         if result.status == 'updated':

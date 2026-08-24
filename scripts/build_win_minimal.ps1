@@ -13,7 +13,7 @@ $DestDir = Join-Path $BuildDir $DestName
 $PyLibsDir = Join-Path $DestDir "ballontrans_pylibs_win"
 $ZipFile = Join-Path $PSScriptRoot "..\$DestName.zip"
 
-Write-Host "=== Starting BallonsTranslator Minimal Build ==="
+Write-Host "=== Starting Minimal Windows Build ==="
 Write-Host "Python version: $PythonVersion"
 if ($Tag) { Write-Host "Build Tag: $Tag" }
 Write-Host "Destination: $DestDir"

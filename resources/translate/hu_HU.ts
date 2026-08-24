@@ -1643,8 +1643,8 @@
     </message>
     <message>
         <location filename="../../ballontranslator/ui/mainwindow.py" line="610"/>
-        <source>Update installed. Restart BallonsTranslator to use the new version.</source>
-        <translation>Frissítés telepítve. Az új verzió használatához indítsd újra a Ballons Translatort.</translation>
+        <source>Update installed. Restart the application to use the new version.</source>
+        <translation>Frissítés telepítve. Az új verzió használatához indítsd újra az alkalmazást.</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/mainwindow.py" line="622"/>

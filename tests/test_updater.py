@@ -64,6 +64,20 @@ class UpdaterTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             updater.release_info_from_api_payload([])
 
+    def test_remote_updates_disabled_skips_network(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / 'pyproject.toml').write_text('[project]\nversion = "1.4.2"\n', encoding='utf8')
+
+            result = updater.BallonsTranslatorUpdater(
+                program_path=str(root),
+                cache_dir=str(root / '.btrans_cache'),
+            ).check_latest_release()
+
+        self.assertEqual(result.status, 'disabled')
+        self.assertEqual(result.current_version, '1.4.2')
+
+    @mock.patch.object(updater, 'REMOTE_UPDATES_ENABLED', True)
     def test_check_latest_release_does_not_apply_update(self):
         class FakeUpdater(updater.BallonsTranslatorUpdater):
             def query_latest_release(self):
@@ -87,6 +101,7 @@ class UpdaterTests(unittest.TestCase):
         self.assertEqual(result.current_version, '1.4.2')
         self.assertEqual(result.latest_version, '1.4.3')
 
+    @mock.patch.object(updater, 'REMOTE_UPDATES_ENABLED', True)
     def test_cached_release_preview_does_not_query_github(self):
         payload = {
             'tag_name': 'v1.4.2',
@@ -174,6 +189,7 @@ class UpdaterTests(unittest.TestCase):
                     (root / filename).read_bytes(),
                 )
 
+    @mock.patch.object(updater, 'REMOTE_UPDATES_ENABLED', True)
     def test_apply_update_creates_backup_before_other_actions(self):
         calls = []
 
@@ -208,6 +224,7 @@ class UpdaterTests(unittest.TestCase):
         self.assertEqual(calls, ['backup', 'download', 'git', 'install'])
         self.assertEqual(result.status, 'updated')
 
+    @mock.patch.object(updater, 'REMOTE_UPDATES_ENABLED', True)
     def test_backup_failure_stops_update_before_download(self):
         class BackupFailingUpdater(updater.BallonsTranslatorUpdater):
             def backup_source(self):

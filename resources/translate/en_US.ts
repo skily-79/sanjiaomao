@@ -890,7 +890,7 @@
     </message>
     <message>
         <location filename="../../ballontranslator/ui/mainwindow.py" line="610"/>
-        <source>Update installed. Restart BallonsTranslator to use the new version.</source>
+        <source>Update installed. Restart the application to use the new version.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

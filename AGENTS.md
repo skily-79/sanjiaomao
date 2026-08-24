@@ -2,7 +2,7 @@
 
 ## Project Shape
 
-BallonsTranslator is a PyQt/qtpy desktop app for comic image translation.
+This codebase is a PyQt/qtpy comic image translation desktop app fork based on [BallonsTranslator](https://github.com/dmMaze/BallonsTranslator).
 
 Important areas:
 - `ballontranslator/launch.py`: startup, dependency checks, Qt setup, headless mode.

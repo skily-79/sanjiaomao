@@ -16,6 +16,9 @@ from .version import get_current_version
 
 RELEASES_URL = 'https://github.com/dmMaze/BallonsTranslator/releases'
 LATEST_RELEASE_API_URL = 'https://api.github.com/repos/dmMaze/BallonsTranslator/releases/latest'
+# Fork builds keep this disabled so the app never contacts upstream or applies
+# foreign source updates automatically.
+REMOTE_UPDATES_ENABLED = False
 RELEASE_RESPONSE_CACHE_FILENAME = 'github_release_response.json'
 UPDATE_BRANCH = 'userspace_update'
 SOURCE_UPDATE_DIRS = ('ballontranslator', 'resources', 'config/llm_profile_builtin')
@@ -41,6 +44,22 @@ class UpdateResult:
     release_url: str = ''
     zip_path: str = ''
     release_info: Optional[ReleaseInfo] = None
+
+
+def disabled_update_result(program_path: str = None) -> UpdateResult:
+    """Return a no-network update result for fork builds.
+
+    >>> result = disabled_update_result('/tmp/app')
+    >>> result.status
+    'disabled'
+    """
+
+    current_version = get_current_version(str(program_path or shared.PROGRAM_PATH))
+    return UpdateResult(
+        status='disabled',
+        current_version=current_version,
+        latest_version='',
+    )
 
 
 def normalize_version_tag(version: str) -> str:
@@ -167,6 +186,8 @@ class BallonsTranslatorUpdater:
         self.progress_callback = progress_callback
 
     def check_and_update(self) -> UpdateResult:
+        if not REMOTE_UPDATES_ENABLED:
+            return disabled_update_result(str(self.program_path))
         result = self.check_latest_release()
         if result.status != 'available' or result.release_info is None:
             return result
@@ -181,6 +202,8 @@ class BallonsTranslatorUpdater:
         True
         """
 
+        if not REMOTE_UPDATES_ENABLED:
+            return disabled_update_result(str(self.program_path))
         return self._result_for_release(self.query_latest_release())
 
     def preview_cached_release(self) -> UpdateResult:
@@ -190,6 +213,8 @@ class BallonsTranslatorUpdater:
         can display their notes without offering an unsafe update action.
         """
 
+        if not REMOTE_UPDATES_ENABLED:
+            return disabled_update_result(str(self.program_path))
         result = self._result_for_release(self.query_cached_release())
         if result.status == 'up_to_date':
             result.status = 'preview'
@@ -207,7 +232,7 @@ class BallonsTranslatorUpdater:
                 release_info=release_info,
             )
 
-        LOGGER.info(f'BallonsTranslator update available: {current_version} -> {release_info.version}')
+        LOGGER.info(f'Remote update available: {current_version} -> {release_info.version}')
         return UpdateResult(
             status='available',
             current_version=current_version,
@@ -217,6 +242,8 @@ class BallonsTranslatorUpdater:
         )
 
     def apply_update(self, release_info: ReleaseInfo, current_version: str = None) -> UpdateResult:
+        if not REMOTE_UPDATES_ENABLED:
+            return disabled_update_result(str(self.program_path))
         current_version = current_version or get_current_version(str(self.program_path))
         self.backup_source()
         zip_path = self.download_source_zip(release_info)
@@ -238,7 +265,7 @@ class BallonsTranslatorUpdater:
             LATEST_RELEASE_API_URL,
             headers={
                 'Accept': 'application/vnd.github+json',
-                'User-Agent': 'BallonsTranslator-Updater',
+                'User-Agent': 'Application-Updater',
             },
         )
         try:

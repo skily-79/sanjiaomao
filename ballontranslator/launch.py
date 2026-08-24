@@ -318,8 +318,7 @@ def main():
                 shared.CUSTOM_FONTS.append(QFontDatabase.applicationFontFamilies(fnt_idx)[0])
 
     if sys.platform == 'win32' and args.headless:
-        # font database does not initialise on windows with qpa -offscreen:
-        # whttps://github.com/dmMaze/BallonsTranslator/issues/519
+        # font database does not initialise on windows with qpa -offscreen.
         from qtpy.QtCore import QStandardPaths
         font_dir_list = QStandardPaths.standardLocations(QStandardPaths.StandardLocation.FontsLocation)
         for fd in font_dir_list:
@@ -372,7 +371,6 @@ def main():
 
     if not args.headless:
         # if shared.SCREEN_W > 1707 and sys.platform == 'win32':   # higher than 2560 (1440p) / 1.5
-        #     # https://github.com/dmMaze/BallonsTranslator/issues/220
         BT.comicTransSplitter.setHandleWidth(7)
 
         ballontrans.setWindowIcon(QIcon(shared.ICON_PATH))

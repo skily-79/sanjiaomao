@@ -22,7 +22,7 @@ body:
     attributes:
       label: 版本信息
       description: |
-        请提供 BallonsTranslator 的版本信息。请复制控制台显示的以下内容（如果信息消失，请保存项目并重启程序）：
+        请提供应用的版本信息。请复制控制台显示的以下内容（如果信息消失，请保存项目并重启程序）：
         - Python 版本及解释器路径
         - 应用版本、分支及 Commit Hash
       placeholder: |

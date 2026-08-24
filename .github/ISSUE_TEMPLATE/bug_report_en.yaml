@@ -24,7 +24,7 @@ body:
     attributes:
       label: Version Info
       description: |
-        Please provide the version information of BallonsTranslator. Copy the following details from the console output (if missing, save your project and restart the application):
+        Please provide the version information of this application. Copy the following details from the console output (if missing, save your project and restart the application):
         - Python version and interpreter path
         - Application version, branch, and Commit Hash
       placeholder: |

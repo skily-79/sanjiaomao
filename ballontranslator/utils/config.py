@@ -297,7 +297,7 @@ class ProgramConfig(Config):
     mask_transparency: float = 0.
     original_transparency: float = 0.
     open_recent_on_startup: bool = True 
-    check_update_on_startup: bool = True
+    check_update_on_startup: bool = False
     spellcheck_enabled: bool = False
     spellcheck_external_dict_path: str = ""
     spellcheck_repo_dicts: str = ""

@@ -1992,7 +1992,7 @@ All existing translation results will be cleared!</source>
         <translation type="vanished">更新已安装</translation>
     </message>
     <message>
-        <source>Update installed. Restart BallonsTranslator to use the new version.</source>
+        <source>Update installed. Restart the application to use the new version.</source>
         <translation type="vanished">更新已安装.重启以应用更新.</translation>
     </message>
     <message>

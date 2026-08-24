@@ -428,7 +428,7 @@ def process_file(file_path, config):
         return False, f"读取文件失败: {e}"
 
     if 'pages' not in data:
-        return False, "不是 BallonsTranslator 格式的 JSON 文件"
+        return False, "不是本应用支持的 JSON 项目文件"
     
     # 从配置中获取当前图片名（由主窗口传递）
     img_name = config.get("CURRENT_IMAGE_NAME", None)

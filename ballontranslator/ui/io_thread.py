@@ -299,7 +299,7 @@ class MergeThread(ThreadBase):
             return
         
         if 'pages' not in data:
-            LOGGER.error('不是 BallonsTranslator 格式的 JSON 文件')
+            LOGGER.error('不是本应用支持的 JSON 项目文件')
             self.merge_finished.emit(0, total)
             return
         
