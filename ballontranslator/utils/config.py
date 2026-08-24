@@ -347,6 +347,9 @@ class ProgramConfig(Config):
     intermediate_imgsave_ext: str = '.png'
     pdf_import_dpi: int = 300
     pdf_export_on_pipeline_finished: bool = True
+    # Extra directory names (beyond the built-in mask/inpainted/result and
+    # *_translate dirs) to skip during recursive batch scans.
+    proj_extra_skip_dirs: List[str] = field(default_factory=list)
     show_text_style_preset: bool = True
     expand_tstyle_panel: bool = True
     show_text_effect_panel: bool = True
@@ -390,6 +393,25 @@ class ProgramConfig(Config):
                         'Discard invalid or duplicate entries in excluded_fonts config.'
                     )
                 config_dict['excluded_fonts'] = normalized_fonts
+
+        if 'proj_extra_skip_dirs' in config_dict:
+            skip_dirs = config_dict['proj_extra_skip_dirs']
+            if not isinstance(skip_dirs, list):
+                LOGGER.warning(
+                    'Discard invalid proj_extra_skip_dirs config: expected a list.'
+                )
+                config_dict.pop('proj_extra_skip_dirs')
+            else:
+                normalized_dirs = [
+                    d
+                    for d in skip_dirs
+                    if isinstance(d, str) and d.strip() and '/' not in d and '\\' not in d
+                ]
+                if len(normalized_dirs) != len(skip_dirs):
+                    LOGGER.warning(
+                        'Discard invalid or duplicate entries in proj_extra_skip_dirs config.'
+                    )
+                config_dict['proj_extra_skip_dirs'] = normalized_dirs
 
         if 'module' in config_dict:
             module_cfg = config_dict['module']

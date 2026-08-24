@@ -592,7 +592,7 @@ class TitleBar(Widget):
         self.mPos = None
         return super().leaveEvent(e)
 
-    def setTitleContent(self, proj_name: str = None, page_name: str = None, save_state: str = None):
+    def setTitleContent(self, proj_name: str = None, page_name: str = None, save_state: str = None, batch_info: str = None):
         max_proj_len = 50
         max_page_len = 50
         if proj_name is not None:
@@ -605,9 +605,13 @@ class TitleBar(Widget):
             self.page_name = page_name
         if save_state is not None:
             self.save_state = save_state
+        if batch_info is not None:
+            self._batch_info = batch_info
         title = self.proj_name + ' - ' + self.page_name
         if self.save_state != '':
             title += ' - '  + self.save_state
+        if getattr(self, '_batch_info', ''):
+            title += ' ' + self._batch_info
         self.titleLabel.setText(title)
 
 

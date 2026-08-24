@@ -78,11 +78,14 @@ def is_pdf_path(path: str) -> bool:
     return isinstance(path, str) and osp.splitext(path)[1].lower() in PDF_EXT
 
 
-def find_pdf_files(path: str) -> List[str]:
+def find_pdf_files(path: str, recursive: bool = False, exclude_dirs=None) -> List[str]:
     """Return the PDF files under *path*, or the single file when *path* is a PDF.
 
-    Directories are scanned non-recursively so a folder of PDFs behaves like a
-    folder of images: each PDF becomes one pipeline queue item.
+    Directories are scanned non-recursively by default so a folder of PDFs behaves
+    like a folder of images: each PDF becomes one pipeline queue item. With
+    ``recursive`` the scan descends into subdirectories, skipping generated
+    ``*_translate`` working dirs so re-scanning a parent never re-imports output.
+    Callers may pass ``exclude_dirs`` to also skip user-configured directory names.
 
     >>> find_pdf_files('/nonexistent/dir')
     []
@@ -91,11 +94,29 @@ def find_pdf_files(path: str) -> List[str]:
         return [path] if is_pdf_path(path) else []
     if not isinstance(path, str) or not osp.isdir(path):
         return []
-    return [
-        osp.join(path, name)
-        for name in sorted(os.listdir(path))
-        if is_pdf_path(name)
-    ]
+
+    if not recursive:
+        return [
+            osp.join(path, name)
+            for name in sorted(os.listdir(path))
+            if is_pdf_path(name)
+        ]
+
+    if exclude_dirs is None:
+        exclude_dirs = set()
+    else:
+        exclude_dirs = set(exclude_dirs)
+
+    pdfs: List[str] = []
+    for root, dirs, files in os.walk(path):
+        dirs[:] = sorted(
+            d for d in dirs
+            if d not in exclude_dirs and not d.endswith('_translate')
+        )
+        for name in sorted(files):
+            if is_pdf_path(name):
+                pdfs.append(osp.join(root, name))
+    return pdfs
 
 
 def clamp_pdf_dpi(dpi) -> int:

@@ -29,7 +29,7 @@ from ballontranslator.utils.config import (
     text_styles,
 )
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
-from ballontranslator.utils.io_utils import find_all_imgs
+from ballontranslator.utils.io_utils import find_all_imgs, find_all_img_dirs
 from ballontranslator.utils.pdf_utils import (
     PdfSupportError,
     extract_pdf_pages,
@@ -134,6 +134,8 @@ class MainWindow(mainwindow_cls):
         self.exec_dirs: List[str] = []
         self._batch_mode = False
         self._batch_silent_export = False
+        self._batch_total = 0
+        self._batch_index = 0
 
         self.setupThread()
         self.setupUi()
@@ -705,7 +707,9 @@ class MainWindow(mainwindow_cls):
                 if pcfg.let_textstyle_indep_flag and not shared.HEADLESS:
                     self.load_textstyle_from_proj_dir(from_proj=True)
                 return
-            self.openDir(proj_path)
+            # Single image directory may live in a subfolder; open that dir.
+            target = batch_items[0] if batch_items and osp.isdir(batch_items[0]) else proj_path
+            self.openDir(target)
         else:
             self.openJsonProj(proj_path)
 
@@ -715,18 +719,20 @@ class MainWindow(mainwindow_cls):
     def _expand_path_for_batch(self, path: str) -> List[str]:
         """Expand a batch queue entry into concrete pipeline targets.
 
-        A directory with images stays one queue item; every PDF in the same
-        folder becomes its own item, matching how image folders are opened.
+        A directory (and every subdirectory) holding images becomes one queue item;
+        every PDF anywhere under the tree becomes its own item, matching how image
+        folders are opened. Generated ``*_translate``/``mask``/``result`` dirs are
+        skipped so re-opening a parent never re-imports its own output.
         """
         if is_pdf_path(path):
             return [path]
         if not osp.isdir(path):
             return [path]
-        pdfs = find_pdf_files(path)
-        imgs = find_all_imgs(path, abs_path=False)
-        items: List[str] = []
-        if imgs:
-            items.append(path)
+
+        extra_skip = set(getattr(pcfg, 'proj_extra_skip_dirs', None) or [])
+        pdfs = find_pdf_files(path, recursive=True, exclude_dirs=extra_skip)
+        img_dirs = find_all_img_dirs(path, exclude_dirs=extra_skip)
+        items: List[str] = list(img_dirs)
         items.extend(pdfs)
         return items if items else [path]
 
@@ -745,6 +751,14 @@ class MainWindow(mainwindow_cls):
             self.imsave_thread.finished.connect(on_done)
         else:
             callback()
+
+    def _update_batch_title(self, current_index: int) -> None:
+        if self._batch_mode and self._batch_total > 1:
+            self.titleBar.setTitleContent(
+                batch_info=f'第 {current_index}/{self._batch_total} 项'
+            )
+        else:
+            self.titleBar.setTitleContent(batch_info='')
 
     def _continue_after_pipeline_export(self) -> None:
         if self._batch_mode or shared.HEADLESS:
@@ -2366,7 +2380,9 @@ class MainWindow(mainwindow_cls):
             LOGGER.warning('no valid paths in batch queue.')
             return
         self.exec_dirs = expanded
-        self._batch_mode = len(self.exec_dirs) > 1
+        self._batch_total = len(self.exec_dirs)
+        self._batch_index = 0
+        self._batch_mode = self._batch_total > 1
         self._batch_silent_export = self._batch_mode or shared.HEADLESS
         self.run_next_dir()
 
@@ -2374,6 +2390,9 @@ class MainWindow(mainwindow_cls):
         if len(self.exec_dirs) == 0:
             self._batch_mode = False
             self._batch_silent_export = False
+            self._batch_total = 0
+            self._batch_index = 0
+            self._update_batch_title(0)
             self._wait_for_imsave_blocking()
             LOGGER.info(f'finished translating all dirs, please enter next dirs to translate (separated by comma). enter "exit" to quit app.')
             new_exec_dirs = input()
@@ -2383,6 +2402,8 @@ class MainWindow(mainwindow_cls):
                 return
             self.run_batch(new_exec_dirs)
             return
+        current = self._batch_total - len(self.exec_dirs) + 1
+        self._update_batch_title(current)
         d = self.exec_dirs.pop(0)
 
         LOGGER.info(f'translating {d} ...')

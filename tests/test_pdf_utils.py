@@ -78,6 +78,43 @@ class PdfPathHelperTests(unittest.TestCase):
             self.assertEqual(find_pdf_files(osp.join(tmp_dir, 'notes.txt')), [])
             self.assertEqual(find_pdf_files('/nonexistent/dir'), [])
 
+    def test_find_pdf_files_recursive_skips_translate_dirs(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            sub = osp.join(tmp_dir, 'sub')
+            os.makedirs(sub)
+            work = osp.join(tmp_dir, 'comic_translate')
+            os.makedirs(work)
+            top_pdf = osp.join(tmp_dir, 'a.pdf')
+            sub_pdf = osp.join(sub, 'b.pdf')
+            gen_pdf = osp.join(work, 'c.pdf')
+            for p in (top_pdf, sub_pdf, gen_pdf):
+                with open(p, 'wb') as f:
+                    f.write(b'')
+
+            result = find_pdf_files(tmp_dir, recursive=True)
+            self.assertEqual(result, [top_pdf, sub_pdf])
+            # Non-recursive still only sees the top level.
+            self.assertEqual(find_pdf_files(tmp_dir), [top_pdf])
+
+    def test_find_pdf_files_recursive_respects_exclude_dirs(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            custom = osp.join(tmp_dir, 'my_output')
+            os.makedirs(custom)
+            top_pdf = osp.join(tmp_dir, 'a.pdf')
+            hidden_pdf = osp.join(custom, 'b.pdf')
+            for p in (top_pdf, hidden_pdf):
+                with open(p, 'wb') as f:
+                    f.write(b'')
+
+            self.assertEqual(
+                find_pdf_files(tmp_dir, recursive=True, exclude_dirs={'my_output'}),
+                [top_pdf],
+            )
+            self.assertEqual(
+                find_pdf_files(tmp_dir, recursive=True),
+                [top_pdf, hidden_pdf],
+            )
+
 
 class PdfManifestTests(unittest.TestCase):
 
