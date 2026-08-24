@@ -75,6 +75,37 @@ def find_all_imgs(img_dir, abs_path=False, sort=False):
         
     return imglist
 
+
+# Directories a project generates during translation. Recursive batch scans must
+# skip these so re-opening a parent folder never re-imports its own output.
+PROJ_AUX_DIRS = {'mask', 'inpainted', 'result'}
+
+
+def find_all_img_dirs(tgt_dir, exclude_dirs=None):
+    """Return every directory (including subdirectories) that directly holds images.
+
+    Generated working directories are skipped so a translated project is not
+    scanned as new input. PDF rasterisation dirs end in ``_translate``. Callers may
+    pass ``exclude_dirs`` to also skip user-configured directory names.
+
+    >>> sorted(find_all_img_dirs('/nonexistent/dir'))
+    []
+    """
+    if exclude_dirs is None:
+        exclude_dirs = set(PROJ_AUX_DIRS)
+    else:
+        exclude_dirs = set(exclude_dirs) | set(PROJ_AUX_DIRS)
+
+    img_dirs = []
+    for root, dirs, files in os.walk(tgt_dir):
+        dirs[:] = sorted(
+            d for d in dirs
+            if d not in exclude_dirs and not d.endswith('_translate')
+        )
+        if any(Path(f).suffix.lower() in IMG_EXT for f in files):
+            img_dirs.append(root)
+    return img_dirs
+
 def create_thumbnail(img_path, max_width=1000):
     """
     为图像创建缩略图，保持宽高比。

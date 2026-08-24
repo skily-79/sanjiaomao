@@ -16,6 +16,7 @@ from ballontranslator.utils.pdf_utils import (
     extract_pdf_pages,
     find_pdf_files,
     is_pdf_path,
+    is_translated_pdf_output,
     is_pdf_project,
     manifest_path,
     pdf_support_available,
@@ -77,6 +78,66 @@ class PdfPathHelperTests(unittest.TestCase):
             self.assertEqual(find_pdf_files(comic_a), [comic_a])
             self.assertEqual(find_pdf_files(osp.join(tmp_dir, 'notes.txt')), [])
             self.assertEqual(find_pdf_files('/nonexistent/dir'), [])
+
+    def test_find_pdf_files_recursive_skips_translate_dirs(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            sub = osp.join(tmp_dir, 'sub')
+            os.makedirs(sub)
+            work = osp.join(tmp_dir, 'comic_translate')
+            os.makedirs(work)
+            top_pdf = osp.join(tmp_dir, 'a.pdf')
+            sub_pdf = osp.join(sub, 'b.pdf')
+            gen_pdf = osp.join(work, 'c.pdf')
+            for p in (top_pdf, sub_pdf, gen_pdf):
+                with open(p, 'wb') as f:
+                    f.write(b'')
+
+            result = find_pdf_files(tmp_dir, recursive=True)
+            self.assertEqual(result, [top_pdf, sub_pdf])
+            # Non-recursive still only sees the top level.
+            self.assertEqual(find_pdf_files(tmp_dir), [top_pdf])
+
+    def test_find_pdf_files_recursive_respects_exclude_dirs(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            custom = osp.join(tmp_dir, 'my_output')
+            os.makedirs(custom)
+            top_pdf = osp.join(tmp_dir, 'a.pdf')
+            hidden_pdf = osp.join(custom, 'b.pdf')
+            for p in (top_pdf, hidden_pdf):
+                with open(p, 'wb') as f:
+                    f.write(b'')
+
+            self.assertEqual(
+                find_pdf_files(tmp_dir, recursive=True, exclude_dirs={'my_output'}),
+                [top_pdf],
+            )
+            self.assertEqual(
+                find_pdf_files(tmp_dir, recursive=True),
+                [top_pdf, hidden_pdf],
+            )
+
+    def test_is_translated_pdf_output(self):
+        self.assertTrue(is_translated_pdf_output('comic_translated.pdf'))
+        self.assertTrue(is_translated_pdf_output('comic_translated.PDF'))
+        self.assertFalse(is_translated_pdf_output('comic.pdf'))
+        self.assertFalse(is_translated_pdf_output('comic_translated'))
+
+    def test_find_pdf_files_skips_translated_exports(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            sub = osp.join(tmp_dir, 'sub')
+            os.makedirs(sub)
+            source = osp.join(tmp_dir, 'comic.pdf')
+            exported = osp.join(tmp_dir, 'comic_translated.pdf')
+            sub_source = osp.join(sub, 'chapter.pdf')
+            sub_exported = osp.join(sub, 'chapter_translated.pdf')
+            for p in (source, exported, sub_source, sub_exported):
+                with open(p, 'wb') as f:
+                    f.write(b'')
+
+            self.assertEqual(find_pdf_files(tmp_dir), [source])
+            self.assertEqual(find_pdf_files(tmp_dir, recursive=True), [source, sub_source])
+            self.assertEqual(find_pdf_files(exported), [])
+            self.assertEqual(find_pdf_files(source), [source])
 
 
 class PdfManifestTests(unittest.TestCase):
